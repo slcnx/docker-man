@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北京站 - bj.magedu.com</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #c0392b;
+            border-bottom: 4px solid #e74c3c;
+            padding-bottom: 15px;
+        }
+        .location {
+            font-size: 3em;
+            text-align: center;
+            margin: 30px 0;
+        }
+        .info {
+            background-color: #fef5e7;
+            padding: 20px;
+            border-left: 5px solid #e74c3c;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .badge {
+            background-color: #e74c3c;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏛️ 欢迎访问北京站</h1>
+        <div class="location">📍 北京 Beijing</div>
+        <div class="info">
+            <p><strong>子域:</strong> <span class="badge">bj.magedu.com</span></p>
+            <p><strong>Web服务器IP:</strong> 10.0.0.24</p>
+            <p><strong>子域DNS服务器:</strong> bj-dns (10.0.0.14)</p>
+            <p><strong>区域:</strong> 华北地区</p>
+            <p><strong>状态:</strong> ✅ 运行正常</p>
+        </div>
+        <h2>子域委派架构</h2>
+        <ul>
+            <li>独立的DNS服务器管理子域</li>
+            <li>主域通过NS记录委派</li>
+            <li>支持分布式DNS架构</li>
+            <li>胶水记录打破循环依赖</li>
+        </ul>
+    </div>
+</body>
+</html>

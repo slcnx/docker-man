@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # 主DNS服务器 - 管理主域 magedu.com
+  dns-main:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-dns-main
+    hostname: dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # bj子域DNS服务器 - 管理 bj.magedu.com
+  dns-bj:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-dns-bj
+    hostname: bj-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # sh子域DNS服务器 - 管理 sh.magedu.com
+  dns-sh:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-dns-sh
+    hostname: sh-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # bj Web服务器
+  web-bj:
+    image: nginx:alpine
+    container_name: manual-sub-web-bj
+    hostname: www-bj
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.24
+    expose:
+      - "80"
+    volumes:
+      - ./html/bj:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # sh Web服务器
+  web-sh:
+    image: nginx:alpine
+    container_name: manual-sub-web-sh
+    hostname: www-sh
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.26
+    expose:
+      - "80"
+    volumes:
+      - ./html/sh:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # 客户端/博客
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-dns-client
+    hostname: blog
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

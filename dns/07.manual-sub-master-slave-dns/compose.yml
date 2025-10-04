@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  # 主DNS服务器 (dns1) - 主服务器
+  dns-master:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-ms-dns-master
+    hostname: dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # 主DNS从服务器 (dns2) - 从服务器
+  dns-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-ms-dns-slave
+    hostname: dns2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # bj子域DNS服务器
+  dns-bj:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-ms-dns-bj
+    hostname: bj-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # sh子域DNS服务器
+  dns-sh:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-ms-dns-sh
+    hostname: sh-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  # bj Web服务器
+  web-bj:
+    image: nginx:alpine
+    container_name: manual-sub-ms-web-bj
+    hostname: www-bj
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.24
+    expose:
+      - "80"
+    volumes:
+      - ./html/bj:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # sh Web服务器
+  web-sh:
+    image: nginx:alpine
+    container_name: manual-sub-ms-web-sh
+    hostname: www-sh
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.26
+    expose:
+      - "80"
+    volumes:
+      - ./html/sh:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  # 客户端
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: manual-sub-ms-client
+    hostname: blog
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+      - 10.0.0.15
+    command: tail -f /dev/null
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

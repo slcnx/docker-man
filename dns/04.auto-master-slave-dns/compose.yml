@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  dns-master:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-master
+    hostname: dns-master
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./master-configs/named.conf:/etc/named.conf:ro
+      - ./master-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./master-configs/named.magedu.com:/var/named/named.magedu.com:ro
+      - ./master-configs/named.0.0.10:/var/named/named.0.0.10:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-slave
+    hostname: dns-slave
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./slave-configs/named.conf:/etc/named.conf:ro
+      - ./slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-master:
+        condition: service_healthy
+
+  web-server:
+    image: nginx:alpine
+    container_name: auto-web-server
+    hostname: www.magedu.com
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-client
+    hostname: client
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+      - 10.0.0.15
+    command: |
+        tail -f /dev/null
+    depends_on:
+      dns-master:
+        condition: service_healthy
+      dns-slave:
+        condition: service_healthy
+      web-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

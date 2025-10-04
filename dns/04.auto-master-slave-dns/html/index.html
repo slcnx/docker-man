@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magedu DNS 主从架构 - 自动化部署</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 4px solid #667eea;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 30px;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+        .info {
+            background: linear-gradient(135deg, #e8f4f8 0%, #d4e9f7 100%);
+            padding: 20px;
+            border-left: 5px solid #3498db;
+            margin: 25px 0;
+            border-radius: 5px;
+        }
+        .success {
+            color: #27ae60;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .feature {
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        ul {
+            line-height: 2;
+        }
+        li {
+            margin: 8px 0;
+        }
+        .badge {
+            display: inline-block;
+            background-color: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 欢迎访问 Magedu.com</h1>
+        <div class="info">
+            <p class="success">✅ DNS 主从架构自动化部署成功！</p>
+            <p style="margin-top: 10px; color: #555;">本系统采用 Docker Compose 实现一键部署，所有配置已自动完成。</p>
+        </div>
+
+        <h2>📊 架构信息</h2>
+        <div class="feature">
+            <ul>
+                <li><strong>主 DNS 服务器:</strong> <code>10.0.0.13</code> (dns-master) <span class="badge">Master</span></li>
+                <li><strong>从 DNS 服务器:</strong> <code>10.0.0.15</code> (dns-slave) <span class="badge">Slave</span></li>
+                <li><strong>Web 服务器:</strong> <code>10.0.0.14</code> (www.magedu.com) <span class="badge">Nginx</span></li>
+                <li><strong>客户端:</strong> <code>10.0.0.12</code> (client) <span class="badge">Testing</span></li>
+                <li><strong>域名:</strong> <code>www.magedu.com</code></li>
+            </ul>
+        </div>
+
+        <h2>🎯 功能特性</h2>
+        <div class="feature">
+            <ul>
+                <li>✅ <strong>主从自动同步</strong> - 区域文件自动从主服务器传输到从服务器</li>
+                <li>✅ <strong>高可用性保障</strong> - 双DNS服务器提供冗余备份</li>
+                <li>✅ <strong>负载均衡支持</strong> - 客户端可查询任一DNS服务器</li>
+                <li>✅ <strong>区域传输控制</strong> - 仅允许授权的从服务器传输</li>
+                <li>✅ <strong>自动通知机制</strong> - 主服务器更新后自动通知从服务器</li>
+                <li>✅ <strong>IPv6过滤</strong> - 避免network unreachable警告</li>
+                <li>✅ <strong>健康检查</strong> - 自动监控服务状态</li>
+                <li>✅ <strong>一键部署</strong> - docker compose up -d 即可完成部署</li>
+            </ul>
+        </div>
+
+        <h2>🔧 技术栈</h2>
+        <div class="feature">
+            <ul>
+                <li><strong>DNS服务:</strong> BIND 9 (Berkeley Internet Name Domain)</li>
+                <li><strong>Web服务:</strong> Nginx Alpine</li>
+                <li><strong>容器编排:</strong> Docker Compose 3.8</li>
+                <li><strong>基础镜像:</strong> Rocky Linux 9.3</li>
+                <li><strong>网络模式:</strong> Bridge (10.0.0.0/24)</li>
+            </ul>
+        </div>
+
+        <h2>📝 DNS记录信息</h2>
+        <div class="feature">
+            <ul>
+                <li><strong>NS记录:</strong> ns1.magedu.com (10.0.0.13), ns2.magedu.com (10.0.0.15)</li>
+                <li><strong>A记录:</strong> www.magedu.com → 10.0.0.14</li>
+                <li><strong>通配符:</strong> *.magedu.com → 10.0.0.199</li>
+                <li><strong>SOA记录:</strong> 序列号 2024100401</li>
+            </ul>
+        </div>
+
+        <h2>🎓 学习要点</h2>
+        <div class="feature">
+            <ul>
+                <li>📌 主DNS配置 <code>allow-transfer</code> 和 <code>notify yes</code></li>
+                <li>📌 从DNS配置 <code>type slave</code> 和 <code>masters</code></li>
+                <li>📌 每次修改区域文件必须增加序列号</li>
+                <li>📌 从服务器的区域文件存放在 <code>/var/named/slaves/</code></li>
+                <li>📌 使用 <code>rndc retransfer</code> 可强制重新传输</li>
+                <li>📌 使用 <code>filter-aaaa-on-v4 yes</code> 过滤IPv6查询</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

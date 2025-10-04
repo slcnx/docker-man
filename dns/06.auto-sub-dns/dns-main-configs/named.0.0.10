@@ -1,0 +1,17 @@
+$TTL 86400
+@ IN SOA magedu-dns.magedu.com. admin.magedu.com. (
+	128
+	3H
+	15M
+	1D
+	1W
+)
+
+	NS dns1.magedu.com.
+
+12	IN PTR blog.magedu.com.
+13	IN PTR dns1.magedu.com.
+14	IN PTR bj-dns.magedu.com.
+16	IN PTR sh-dns.magedu.com.
+24	IN PTR www-bj.bj.magedu.com.
+26	IN PTR www-sh.sh.magedu.com.

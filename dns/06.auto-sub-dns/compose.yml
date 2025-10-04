@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # 主DNS服务器
+  dns-main:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-dns-main
+    hostname: dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-main-configs/named.conf:/etc/named.conf:ro
+      - ./dns-main-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-main-configs/named.magedu.com:/var/named/named.magedu.com:ro
+      - ./dns-main-configs/named.0.0.10:/var/named/named.0.0.10:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # bj子域DNS服务器
+  dns-bj:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-dns-bj
+    hostname: bj-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-bj-configs/named.conf:/etc/named.conf:ro
+      - ./dns-bj-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-bj-configs/named.bj.magedu.com:/var/named/named.bj.magedu.com:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "bj.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # sh子域DNS服务器
+  dns-sh:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-dns-sh
+    hostname: sh-dns
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-sh-configs/named.conf:/etc/named.conf:ro
+      - ./dns-sh-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-sh-configs/named.sh.magedu.com:/var/named/named.sh.magedu.com:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "sh.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # bj Web服务器
+  web-bj:
+    image: nginx:alpine
+    container_name: auto-sub-web-bj
+    hostname: www-bj
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.24
+    expose:
+      - "80"
+    volumes:
+      - ./html/bj:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # sh Web服务器
+  web-sh:
+    image: nginx:alpine
+    container_name: auto-sub-web-sh
+    hostname: www-sh
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.26
+    expose:
+      - "80"
+    volumes:
+      - ./html/sh:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 客户端
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-dns-client
+    hostname: blog
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: tail -f /dev/null
+    depends_on:
+      dns-main:
+        condition: service_healthy
+      dns-bj:
+        condition: service_healthy
+      dns-sh:
+        condition: service_healthy
+      web-bj:
+        condition: service_healthy
+      web-sh:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

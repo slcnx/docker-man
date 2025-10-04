@@ -1,0 +1,241 @@
+version: '3.8'
+
+services:
+  # 主DNS Master
+  dns-master:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-master
+    hostname: dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./master-configs/named.conf:/etc/named.conf:ro
+      - ./master-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./master-configs/named.magedu.com:/var/named/named.magedu.com:ro
+      - ./master-configs/named.bj.magedu.com:/var/named/named.bj.magedu.com:ro
+      - ./master-configs/named.sh.magedu.com:/var/named/named.sh.magedu.com:ro
+      - ./master-configs/named.0.0.10:/var/named/named.0.0.10:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 主DNS Slave
+  dns-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-slave
+    hostname: dns2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./slave-configs/named.conf:/etc/named.conf:ro
+      - ./slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-master:
+        condition: service_healthy
+
+  # bj子域DNS Master
+  dns-bj-master:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-bj-master
+    hostname: bj-dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-bj-master-configs/named.conf:/etc/named.conf:ro
+      - ./dns-bj-master-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-bj-master-configs/named.bj.magedu.com:/var/named/named.bj.magedu.com:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "bj.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # bj子域DNS Slave
+  dns-bj-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-bj-slave
+    hostname: bj-dns2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.17
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-bj-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-bj-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "bj.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-bj-master:
+        condition: service_healthy
+
+  # sh子域DNS Master
+  dns-sh-master:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-sh-master
+    hostname: sh-dns1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-sh-master-configs/named.conf:/etc/named.conf:ro
+      - ./dns-sh-master-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-sh-master-configs/named.sh.magedu.com:/var/named/named.sh.magedu.com:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "sh.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # sh子域DNS Slave
+  dns-sh-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-dns-sh-slave
+    hostname: sh-dns2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.18
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-sh-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-sh-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "sh.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-sh-master:
+        condition: service_healthy
+
+  # bj Web服务器
+  web-bj:
+    image: nginx:alpine
+    container_name: auto-sub-ms-web-bj
+    hostname: www-bj
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.24
+    expose:
+      - "80"
+    volumes:
+      - ./html/bj:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # sh Web服务器
+  web-sh:
+    image: nginx:alpine
+    container_name: auto-sub-ms-web-sh
+    hostname: www-sh
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.26
+    expose:
+      - "80"
+    volumes:
+      - ./html/sh:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 客户端
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-sub-ms-client
+    hostname: blog
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+      - 10.0.0.15
+    command: |
+      tail -f /dev/null
+    depends_on:
+      dns-master:
+        condition: service_healthy
+      dns-slave:
+        condition: service_healthy
+      dns-bj-master:
+        condition: service_healthy
+      dns-bj-slave:
+        condition: service_healthy
+      dns-sh-master:
+        condition: service_healthy
+      dns-sh-slave:
+        condition: service_healthy
+      web-bj:
+        condition: service_healthy
+      web-sh:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

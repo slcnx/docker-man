@@ -1,0 +1,38 @@
+// named.rfc1912.zones - bj子域DNS从服务器区域配置
+
+zone "localhost.localdomain" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "localhost" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "1.0.0.127.in-addr.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "0.in-addr.arpa" IN {
+	type master;
+	file "named.empty";
+	allow-update { none; };
+};
+
+// bj子域配置（从服务器）
+zone "bj.magedu.com" IN {
+	type slave;
+	file "slaves/named.bj.magedu.com";
+	masters { 10.0.0.14; };  // 从bj-dns1同步
+};

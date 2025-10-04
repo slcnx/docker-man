@@ -1,0 +1,13 @@
+$TTL 86400
+@ IN SOA @ admin.magedu.com (
+	123		; 序列号
+	3H		; 刷新时间
+	15M		; 重试时间
+	1D		; 过期时间
+	1W		; 最小TTL
+)
+
+	NS ns1.magedu.com.
+
+13	IN PTR ns1.magedu.com.
+14	IN PTR www.magedu.com.

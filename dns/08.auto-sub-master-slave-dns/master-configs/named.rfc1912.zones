@@ -1,0 +1,52 @@
+// named.rfc1912.zones - 主DNS Master配置
+
+zone "localhost.localdomain" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "localhost" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "1.0.0.127.in-addr.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "0.in-addr.arpa" IN {
+	type master;
+	file "named.empty";
+	allow-update { none; };
+};
+
+// 主域配置（主服务器）- 包含子域委派记录
+zone "magedu.com" IN {
+	type master;
+	file "/var/named/named.magedu.com";
+	allow-update { none; };
+	allow-transfer { 10.0.0.15; };
+	notify yes;
+};
+
+// 反向解析区域（主服务器）
+zone "0.0.10.in-addr.arpa" IN {
+	type master;
+	file "/var/named/named.0.0.10";
+	allow-update { none; };
+	allow-transfer { 10.0.0.15; };
+	notify yes;
+};
+
+// 注意：bj.magedu.com 和 sh.magedu.com 子域由独立的DNS服务器管理
+// 不在此配置，通过主域中的NS记录委派给子域DNS服务器

@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  dns-server:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server
+    hostname: dns-server
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./configs/named.conf:/etc/named.conf:ro
+      - ./configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./configs/named.magedu.com:/var/named/named.magedu.com:ro
+      - ./configs/named.0.0.10:/var/named/named.0.0.10:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web-server:
+    image: nginx:alpine
+    container_name: auto-web-server
+    hostname: www.magedu.com
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-client
+    hostname: client
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: |
+      bash -c "
+        yum install -y bind-utils &&
+        echo '===== DNS 自动化测试开始 =====' &&
+        sleep 10 &&
+        echo '1. 测试正向 DNS 解析:' &&
+        nslookup www.magedu.com &&
+        echo '2. 测试反向 DNS 解析 (PTR记录):' &&
+        nslookup 10.0.0.13 &&
+        nslookup 10.0.0.14 &&
+        echo '3. 测试 Web 访问:' &&
+        curl -s http://www.magedu.com | head -5 &&
+        echo '===== 测试完成，保持运行 =====' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      dns-server:
+        condition: service_healthy
+      web-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

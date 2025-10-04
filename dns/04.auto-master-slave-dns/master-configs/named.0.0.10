@@ -1,0 +1,15 @@
+$TTL 86400
+@ IN SOA ns1.magedu.com. admin.magedu.com. (
+	2024100401	; 序列号
+	3H		; 刷新时间
+	15M		; 重试时间
+	1W		; 过期时间
+	1D		; 最小TTL
+)
+
+	NS ns1.magedu.com.
+	NS ns2.magedu.com.
+
+13	IN PTR ns1.magedu.com.
+14	IN PTR www.magedu.com.
+15	IN PTR ns2.magedu.com.

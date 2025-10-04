@@ -1,0 +1,48 @@
+// named.rfc1912.zones - 主DNS Slave配置
+
+zone "localhost.localdomain" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "localhost" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "1.0.0.127.in-addr.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "0.in-addr.arpa" IN {
+	type master;
+	file "named.empty";
+	allow-update { none; };
+};
+
+// 主域配置（从服务器）- 从主DNS同步，包含子域委派记录
+zone "magedu.com" IN {
+	type slave;
+	file "slaves/named.magedu.com";
+	masters { 10.0.0.13; };
+};
+
+// 反向解析区域（从服务器）
+zone "0.0.10.in-addr.arpa" IN {
+	type slave;
+	file "slaves/named.0.0.10";
+	masters { 10.0.0.13; };
+};
+
+// 注意：bj.magedu.com 和 sh.magedu.com 子域由独立的DNS服务器管理
+// 从DNS不同步子域区域，只同步主域（包含委派记录）
