@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  dns-server:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: dns-server
+    hostname: dns-server
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.13
+      external-net:
+        ipv4_address: 192.168.1.13
+    ports:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+
+  dns-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: dns-slave
+    hostname: dns-slave
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.15
+      external-net:
+        ipv4_address: 192.168.1.15
+    ports:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    restart: unless-stopped
+    depends_on:
+      - dns-server
+
+  web-internal:
+    image: nginx:alpine
+    container_name: web-internal
+    hostname: www-internal.magedu.com
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.14
+    ports:
+      - "80"
+    volumes:
+      - ./html-internal:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  web-external:
+    image: nginx:alpine
+    container_name: web-external
+    hostname: www-external.magedu.com
+    networks:
+      external-net:
+        ipv4_address: 192.168.1.14
+    ports:
+      - "80"
+    volumes:
+      - ./html-external:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  client-internal:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: client-internal
+    hostname: client-internal
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: tail -f /dev/null
+    depends_on:
+      - dns-server
+      - web-internal
+    restart: unless-stopped
+
+  client-external:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: client-external
+    hostname: client-external
+    networks:
+      external-net:
+        ipv4_address: 192.168.1.12
+    dns:
+      - 192.168.1.13
+    command: tail -f /dev/null
+    depends_on:
+      - dns-server
+      - web-external
+    restart: unless-stopped
+
+networks:
+  internal-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
+  external-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1

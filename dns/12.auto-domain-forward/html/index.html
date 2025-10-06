@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to magedu.com</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        .info {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Welcome to magedu.com</h1>
+        <p>DNS 指定域转发 + 主从复制自动化部署成功！</p>
+        <div class="info">
+            <p><strong>架构说明：</strong></p>
+            <p>✅ DNS Server 1 (10.0.0.13) - 主指定域转发服务器</p>
+            <p>✅ DNS Server 1 Slave (10.0.0.16) - 从指定域转发服务器</p>
+            <p>✅ DNS Server 2 (10.0.0.15) - 主权威服务器</p>
+            <p>✅ DNS Server 2 Slave (10.0.0.17) - 从权威服务器</p>
+            <p>✅ magedu.com 域 → 指定转发</p>
+            <p>✅ 其他域名 → 直接递归解析</p>
+        </div>
+    </div>
+</body>
+</html>

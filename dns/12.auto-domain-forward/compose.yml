@@ -1,0 +1,190 @@
+services:
+  dns-server-1:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-1
+    hostname: dns-server-1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-1-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-1-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-server-1-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-1-slave
+    hostname: dns-server-1-slave
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-1-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-1-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - dns-server-1
+
+  dns-server-2:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-2
+    hostname: dns-server-2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-2-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-2-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-server-2-configs/magedu.com.zone:/var/named/magedu.com.zone:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-server-2-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-2-slave
+    hostname: dns-server-2-slave
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.17
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-2-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-2-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - dns-server-2-slave-data:/var/named/slaves
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-server-2:
+        condition: service_healthy
+
+  web-server:
+    image: nginx:alpine
+    container_name: auto-web-server
+    hostname: www.magedu.com
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-client
+    hostname: client
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: |
+      bash -c "
+        echo '===== DNS 指定域转发 + 主从复制自动化测试开始 =====' &&
+        sleep 15 &&
+        echo '' &&
+        echo '========== 1. 测试指定域转发 (magedu.com) ==========' &&
+        echo '1.1 通过主转发服务器 (server-1) 查询 magedu.com:' &&
+        dig @10.0.0.13 www.magedu.com +short &&
+        echo '1.2 通过从转发服务器 (server-1-slave) 查询 magedu.com:' &&
+        dig @10.0.0.16 www.magedu.com +short &&
+        echo '1.3 通过主权威服务器 (server-2) 查询 magedu.com:' &&
+        dig @10.0.0.15 www.magedu.com +short &&
+        echo '1.4 通过从权威服务器 (server-2-slave) 查询 magedu.com:' &&
+        dig @10.0.0.17 www.magedu.com +short &&
+        echo '' &&
+        echo '========== 2. 测试非指定域（直接递归解析） ==========' &&
+        echo '2.1 通过 server-1 查询 www.baidu.com（直接递归，不转发）:' &&
+        dig @10.0.0.13 www.baidu.com +short | head -2 &&
+        echo '2.2 通过 server-1-slave 查询 www.qq.com（直接递归，不转发）:' &&
+        dig @10.0.0.16 www.qq.com +short | head -2 &&
+        echo '' &&
+        echo '========== 3. 验证主从 NS 记录 ==========' &&
+        dig @10.0.0.15 NS magedu.com +short &&
+        echo '' &&
+        echo '========== 4. 测试 Web 访问 ==========' &&
+        curl -s http://www.magedu.com | head -3 &&
+        echo '' &&
+        echo '========== 5. 验证转发行为差异 ==========' &&
+        echo '说明：magedu.com 通过指定域转发到 server-2' &&
+        echo '      其他域名在 server-1 直接递归解析，不经过转发' &&
+        echo '' &&
+        echo '===== 测试完成，容器保持运行 =====' &&
+        echo '提示：可以使用以下命令进一步测试：' &&
+        echo '  - docker exec auto-dns-client dig @10.0.0.13 www.magedu.com +trace' &&
+        echo '  - docker exec auto-dns-client dig @10.0.0.13 www.baidu.com +trace' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      dns-server-1:
+        condition: service_healthy
+      dns-server-1-slave:
+        condition: service_healthy
+      dns-server-2:
+        condition: service_healthy
+      dns-server-2-slave:
+        condition: service_healthy
+      web-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dns-server-2-slave-data:
+    driver: local
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

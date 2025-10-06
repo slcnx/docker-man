@@ -1,0 +1,188 @@
+services:
+  dns-server:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server
+    hostname: dns-server
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.13
+      external-net:
+        ipv4_address: 192.168.1.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-configs/named.conf:/etc/named.conf:ro
+      - ./dns-configs/zones:/var/named/zones:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-slave
+    hostname: dns-slave
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.15
+      external-net:
+        ipv4_address: 192.168.1.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-slave-configs/named.conf:/etc/named.conf:ro
+    restart: unless-stopped
+    depends_on:
+      dns-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web-internal:
+    image: nginx:alpine
+    container_name: auto-web-internal
+    hostname: www-internal.magedu.com
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "80"
+    volumes:
+      - ./html-internal:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  web-external:
+    image: nginx:alpine
+    container_name: auto-web-external
+    hostname: www-external.magedu.com
+    networks:
+      external-net:
+        ipv4_address: 192.168.1.14
+    expose:
+      - "80"
+    volumes:
+      - ./html-external:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client-internal:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-client-internal
+    hostname: client-internal
+    networks:
+      internal-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: |
+      bash -c "
+        echo '===== DNS 视图测试 - 内网客户端 =====' &&
+        sleep 10 &&
+        echo '' &&
+        echo '客户端 IP: 10.0.0.12 (内网)' &&
+        echo '' &&
+        echo '========== 1. 测试 www.magedu.com 解析 ==========' &&
+        dig @10.0.0.13 www.magedu.com +short &&
+        echo '预期结果: 10.0.0.14 (内网 IP)' &&
+        echo '' &&
+        echo '========== 2. 测试内网专属资源 ==========' &&
+        echo '2.1 查询 ftp.magedu.com (仅内网可见):' &&
+        dig @10.0.0.13 ftp.magedu.com +short &&
+        echo '2.2 查询 db.magedu.com (仅内网可见):' &&
+        dig @10.0.0.13 db.magedu.com +short &&
+        echo '2.3 查询 mail.magedu.com (仅内网可见):' &&
+        dig @10.0.0.13 mail.magedu.com +short &&
+        echo '' &&
+        echo '========== 3. 测试 Web 访问 ==========' &&
+        curl -s http://www.magedu.com | grep -o '内网服务器' | head -1 &&
+        echo '' &&
+        echo '===== 内网客户端测试完成 =====' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      dns-server:
+        condition: service_healthy
+      web-internal:
+        condition: service_healthy
+    restart: unless-stopped
+
+  client-external:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-client-external
+    hostname: client-external
+    networks:
+      external-net:
+        ipv4_address: 192.168.1.12
+    dns:
+      - 192.168.1.13
+    command: |
+      bash -c "
+        echo '===== DNS 视图测试 - 外网客户端 =====' &&
+        sleep 10 &&
+        echo '' &&
+        echo '客户端 IP: 192.168.1.12 (外网)' &&
+        echo '' &&
+        echo '========== 1. 测试 www.magedu.com 解析 ==========' &&
+        dig @192.168.1.13 www.magedu.com +short &&
+        echo '预期结果: 192.168.1.14 (外网 IP)' &&
+        echo '' &&
+        echo '========== 2. 测试内网专属资源（应该不可见）==========' &&
+        echo '2.1 查询 ftp.magedu.com (应该失败):' &&
+        dig @192.168.1.13 ftp.magedu.com +short || echo 'NXDOMAIN (不存在)' &&
+        echo '2.2 查询 db.magedu.com (应该失败):' &&
+        dig @192.168.1.13 db.magedu.com +short || echo 'NXDOMAIN (不存在)' &&
+        echo '2.3 查询 mail.magedu.com (应该失败):' &&
+        dig @192.168.1.13 mail.magedu.com +short || echo 'NXDOMAIN (不存在)' &&
+        echo '' &&
+        echo '========== 3. 测试 Web 访问 ==========' &&
+        curl -s http://www.magedu.com | grep -o '外网服务器' | head -1 &&
+        echo '' &&
+        echo '===== 外网客户端测试完成 =====' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      dns-server:
+        condition: service_healthy
+      web-external:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  internal-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
+  external-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1

@@ -1,0 +1,46 @@
+// named.rfc1912.zones:
+//
+// Provided by Red Hat caching-nameserver package
+//
+// ISC BIND named zone configuration for zones recommended by
+// RFC 1912 section 4.1 : localhost TLDs and address zones
+//
+
+// magedu.com 主区域配置
+zone "magedu.com" IN {
+	type master;                    // 主服务器类型
+	file "magedu.com.zone";         // 区域文件路径
+	allow-update { none; };         // 禁止动态更新
+	allow-transfer { 10.0.0.17; };  // 允许从服务器 (10.0.0.17) 进行区域传输
+	also-notify { 10.0.0.17; };     // 主动通知从服务器更新
+};
+
+zone "localhost.localdomain" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "localhost" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "1.0.0.127.in-addr.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "0.in-addr.arpa" IN {
+	type master;
+	file "named.empty";
+	allow-update { none; };
+};

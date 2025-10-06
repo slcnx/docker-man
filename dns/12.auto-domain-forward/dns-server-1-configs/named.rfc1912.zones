@@ -1,0 +1,42 @@
+// named.rfc1912.zones:
+//
+// ISC BIND named zone configuration for zones recommended by
+// RFC 1912 section 4.1 : localhost TLDs and address zones
+//
+
+// 指定域转发配置 - 只转发 magedu.com 域
+zone "magedu.com" IN {
+	type forward;                   // 转发类型
+	forwarders { 10.0.0.15; };      // 转发到 dns-server-2
+	forward only;                    // 仅转发，不自行递归
+};
+
+zone "localhost.localdomain" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "localhost" IN {
+	type master;
+	file "named.localhost";
+	allow-update { none; };
+};
+
+zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "1.0.0.127.in-addr.arpa" IN {
+	type master;
+	file "named.loopback";
+	allow-update { none; };
+};
+
+zone "0.in-addr.arpa" IN {
+	type master;
+	file "named.empty";
+	allow-update { none; };
+};

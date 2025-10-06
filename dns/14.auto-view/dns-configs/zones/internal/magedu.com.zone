@@ -1,0 +1,17 @@
+$TTL 86400
+@   IN  SOA dns-server.magedu.com. admin.magedu.com. (
+        2024010601  ; Serial
+        3600        ; Refresh
+        1800        ; Retry
+        604800      ; Expire
+        86400 )     ; Minimum TTL
+
+; 名称服务器记录
+@       IN  NS  dns-server.magedu.com.
+
+; A 记录 - 内网视图
+dns-server  IN  A   10.0.0.13       ; DNS 服务器内网 IP
+www         IN  A   10.0.0.14       ; Web 服务器内网 IP
+ftp         IN  A   10.0.0.20       ; FTP 服务器（仅内网可见）
+db          IN  A   10.0.0.30       ; 数据库服务器（仅内网可见）
+mail        IN  A   10.0.0.40       ; 邮件服务器（仅内网可见）

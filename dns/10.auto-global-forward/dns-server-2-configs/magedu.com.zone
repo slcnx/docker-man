@@ -1,0 +1,16 @@
+$TTL 86400
+@   IN  SOA dns-server-2.magedu.com. admin.magedu.com. (
+        2024010601  ; Serial - 序列号（每次修改需递增）
+        3600        ; Refresh - 刷新时间 1小时
+        1800        ; Retry - 重试时间 30分钟
+        604800      ; Expire - 过期时间 1周
+        86400 )     ; Minimum TTL - 最小 TTL 1天
+
+; 名称服务器记录（主从双 NS）
+@               IN  NS  dns-server-2.magedu.com.         ; 主 NS 记录
+@               IN  NS  dns-server-2-slave.magedu.com.   ; 从 NS 记录
+
+; A 记录
+dns-server-2        IN  A   10.0.0.15                    ; 主 NS 服务器 IP
+dns-server-2-slave  IN  A   10.0.0.17                    ; 从 NS 服务器 IP
+www                 IN  A   10.0.0.14                    ; www 主机记录

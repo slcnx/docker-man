@@ -1,0 +1,190 @@
+version: '3.8'
+
+services:
+  dns-server-1:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-1
+    hostname: dns-server-1
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.13
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-1-configs/named.conf:/etc/named.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.baidu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-server-1-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-1-slave
+    hostname: dns-server-1-slave
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.16
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-1-slave-configs/named.conf:/etc/named.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.baidu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - dns-server-1
+
+  dns-server-2:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-2
+    hostname: dns-server-2
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.15
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-2-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-2-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-server-2-configs/magedu.com.zone:/var/named/magedu.com.zone:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dns-server-2-slave:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-server-2-slave
+    hostname: dns-server-2-slave
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.17
+    expose:
+      - "53/tcp"
+      - "53/udp"
+      - "953/tcp"
+    volumes:
+      - ./dns-server-2-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-server-2-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - dns-server-2-slave-data:/var/named/slaves
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "dig", "@127.0.0.1", "www.magedu.com"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      dns-server-2:
+        condition: service_healthy
+
+  web-server:
+    image: nginx:alpine
+    container_name: auto-web-server
+    hostname: www.magedu.com
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.14
+    expose:
+      - "80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: ../dns.dockerfile
+    container_name: auto-dns-client
+    hostname: client
+    networks:
+      dns-net:
+        ipv4_address: 10.0.0.12
+    dns:
+      - 10.0.0.13
+    command: |
+      bash -c "
+        echo '===== DNS 全局转发 + 主从复制自动化测试开始 =====' &&
+        sleep 15 &&
+        echo '' &&
+        echo '========== 1. 测试本地域名解析 (magedu.com) ==========' &&
+        echo '1.1 通过主转发服务器 (server-1) 查询:' &&
+        dig @10.0.0.13 www.magedu.com +short &&
+        echo '1.2 通过从转发服务器 (server-1-slave) 查询:' &&
+        dig @10.0.0.16 www.magedu.com +short &&
+        echo '1.3 通过主权威服务器 (server-2) 查询:' &&
+        dig @10.0.0.15 www.magedu.com +short &&
+        echo '1.4 通过从权威服务器 (server-2-slave) 查询:' &&
+        dig @10.0.0.17 www.magedu.com +short &&
+        echo '' &&
+        echo '========== 2. 验证主从 NS 记录 ==========' &&
+        dig @10.0.0.15 NS magedu.com +short &&
+        echo '' &&
+        echo '========== 3. 测试外部域名解析（通过转发） ==========' &&
+        echo '3.1 通过主转发服务器查询:' &&
+        dig @10.0.0.13 www.baidu.com +short | head -2 &&
+        echo '3.2 通过从转发服务器查询:' &&
+        dig @10.0.0.16 www.baidu.com +short | head -2 &&
+        echo '' &&
+        echo '========== 4. 测试 Web 访问 ==========' &&
+        curl -s http://www.magedu.com | head -3 &&
+        echo '' &&
+        echo '========== 5. 验证主从同步状态 ==========' &&
+        echo '5.1 检查从服务器区域文件:' &&
+        docker exec auto-dns-server-2-slave ls -l /var/named/slaves/ 2>/dev/null || echo '从服务器区域文件同步中...' &&
+        echo '' &&
+        echo '===== 测试完成，容器保持运行 =====' &&
+        echo '提示：可以使用以下命令进一步测试：' &&
+        echo '  - docker exec auto-dns-client dig @10.0.0.17 www.magedu.com' &&
+        echo '  - docker exec auto-dns-client nslookup www.magedu.com' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      dns-server-1:
+        condition: service_healthy
+      dns-server-1-slave:
+        condition: service_healthy
+      dns-server-2:
+        condition: service_healthy
+      dns-server-2-slave:
+        condition: service_healthy
+      web-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  dns-server-2-slave-data:
+    driver: local
+
+networks:
+  dns-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
