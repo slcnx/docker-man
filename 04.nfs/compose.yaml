@@ -1,0 +1,37 @@
+services:
+  nfs-server:
+    build:
+      context: .
+      dockerfile: nfs.dockerfile
+    container_name: nfs-server
+    hostname: nfs-server
+    privileged: true  # NFS 需要特权模式访问内核模块
+    volumes:
+      - ./exports:/etc/exports:ro
+      - nfs-share:/data/share
+    stdin_open: true
+    tty: true
+    networks:
+      - nfs-net
+
+  nfs-client:
+    build:
+      context: .
+      dockerfile: nfs.dockerfile
+    container_name: nfs-client
+    hostname: nfs-client
+    privileged: true  # 挂载 NFS 需要特权
+    stdin_open: true
+    tty: true
+    networks:
+      - nfs-net
+    depends_on:
+      - nfs-server
+    command: bash -c "rpcbind && rpc.statd && sleep 5 && tail -f /dev/null"
+
+networks:
+  nfs-net:
+    driver: bridge
+
+volumes:
+  nfs-share:
