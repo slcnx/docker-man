@@ -59,9 +59,9 @@ server time2.cloud.tencent.com iburst
 # ========== 对等服务器配置 ==========
 # 与其他 NTP 服务器对等，保持时间一致性
 # ntp-server-2
-peer 10.0.0.122
+peer 10.0.0.122 iburst
 # ntp-server-3
-peer 10.0.0.123
+peer 10.0.0.123 iburst
 
 # ========== 基础配置 ==========
 # 记录系统时钟偏移量
@@ -135,9 +135,9 @@ server time2.cloud.tencent.com iburst
 
 # ========== 对等服务器配置 ==========
 # ntp-server-1
-peer 10.0.0.121
+peer 10.0.0.121 iburst
 # ntp-server-3
-peer 10.0.0.123
+peer 10.0.0.123 iburst
 
 # ========== 基础配置 ==========
 driftfile /var/lib/chrony/drift
@@ -187,9 +187,9 @@ server time2.cloud.tencent.com iburst
 
 # ========== 对等服务器配置 ==========
 # ntp-server-1
-peer 10.0.0.121
+peer 10.0.0.121 iburst
 # ntp-server-2
-peer 10.0.0.122
+peer 10.0.0.122 iburst
 
 # ========== 基础配置 ==========
 driftfile /var/lib/chrony/drift
@@ -235,9 +235,12 @@ vim /etc/chrony.conf
 # ========== NTP 服务器配置 ==========
 # 配置多个 NTP 服务器（高可用）
 # chrony 会自动选择最佳时间源
-server 10.0.0.121 iburst         # ntp-server-1
-server 10.0.0.122 iburst         # ntp-server-2
-server 10.0.0.123 iburst         # ntp-server-3
+# ntp-server-1
+server 10.0.0.121 iburst
+# ntp-server-2
+server 10.0.0.122 iburst
+# ntp-server-3
+server 10.0.0.123 iburst
 
 # ========== 基础配置 ==========
 driftfile /var/lib/chrony/drift
