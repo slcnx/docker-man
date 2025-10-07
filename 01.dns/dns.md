@@ -76,6 +76,7 @@ ls /var/named/data/                   # 查看数据目录
 install -dv -o named -g named /var/log/named   # 创建日志目录并设置权限
 ls -ld /var/log/named                          # 查看目录详细信息
 file /var/named/data/named.run                 # 查看文件类型
+rndc querylog on                               # 问题调试
 ```
 
 ## **名称服务缓存（nscd）**

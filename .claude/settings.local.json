@@ -4,7 +4,10 @@
       "Bash(tree:*)",
       "Bash(mkdir:*)",
       "Bash(rm:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\n重构 DNS 视图配置为 test_view/prod_view/other_view 结构\n\n主要更新：\n- 使用 test_view（测试网段）、prod_view（生产网段）、other_view（其他客户端）\n- 修复 localnets 导致的视图匹配错误（移除 localhost/localnets）\n- 添加 named.rfc1912.zones 文件，包含根域配置以支持 view 模式\n- 区域配置文件拆分：named.conf.test-zones、named.conf.prod-zones\n- 从服务器配置：named.conf.test-zones-slave、named.conf.prod-zones-slave\n- 区域文件目录重命名：zones/internal -> zones/test, zones/external -> zones/prod\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

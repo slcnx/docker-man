@@ -11,6 +11,7 @@ RUN yum install -y \
     man \
     iproute \
     file \
+    iputils \
     nscd && \
     yum clean all
 

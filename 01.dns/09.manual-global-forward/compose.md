@@ -216,8 +216,7 @@ exit
 # 进入客户端容器
 docker compose exec -it client bash
 
-# 1. 安装 DNS 工具
-yum install -y bind-utils curl iputils
+ 
 
 # 2. 测试本地域名解析（magedu.com）- 主服务器
 nslookup www.magedu.com                            # 应该解析到 10.0.0.14

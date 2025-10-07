@@ -7,8 +7,8 @@ $TTL 86400
         86400 )     ; Minimum TTL - 最小 TTL 1天
 
 ; 名称服务器记录（主从双 NS）
-@               IN  NS  dns-server-2.magedu.com.         ; 主 NS 记录
-@               IN  NS  dns-server-2-slave.magedu.com.   ; 从 NS 记录
+@               IN  NS  dns-server-2          ; 主 NS 记录
+@               IN  NS  dns-server-2-slave    ; 从 NS 记录
 
 ; A 记录
 dns-server-2        IN  A   10.0.0.15                    ; 主 NS 服务器 IP
