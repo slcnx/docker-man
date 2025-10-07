@@ -83,7 +83,6 @@ services:
       - ./configs/chrony-client.conf:/etc/chrony.conf:ro
     cap_add:
       - SYS_TIME
-    command: tail -f /dev/null
     depends_on:
       ntp-server-1:
         condition: service_healthy
