@@ -1,0 +1,7 @@
+zone "magedu.com" IN {
+    type master;
+    file "zones/test/magedu.com.zone";
+    allow-update { none; };
+    allow-transfer { 10.0.0.15; };      // 允许从服务器传输
+    also-notify { 10.0.0.15; };         // 通知从服务器更新
+};

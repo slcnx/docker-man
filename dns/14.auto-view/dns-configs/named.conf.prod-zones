@@ -1,0 +1,7 @@
+zone "magedu.com" IN {
+    type master;
+    file "zones/prod/magedu.com.zone";
+    allow-update { none; };
+    allow-transfer { 192.168.1.15; };   // 允许从服务器传输
+    also-notify { 192.168.1.15; };      // 通知从服务器更新
+};

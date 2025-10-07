@@ -56,15 +56,16 @@ vim /etc/named.conf
 
 # 在文件开头添加 ACL 定义（在 options 之前）
 // 定义访问控制列表（ACL）
-acl "internal-networks" {
-    10.0.0.0/24;        # 内网网段
-    localhost;          # 本地
-    localnets;          # 本地网段
+acl test_net {
+    10.0.0.0/24;        # 测试网段（内网）
 };
 
-acl "external-networks" {
-    192.168.1.0/24;     # 外网网段
-    any;                # 其他所有（可根据需要调整）
+acl prod_net {
+    192.168.1.0/24;     # 生产网段（外网）
+};
+
+acl other_net {
+    any;                # 其他所有客户端
 };
 
 include "/etc/rndc.key";
@@ -103,120 +104,81 @@ logging {
     };
 };
 
-// ========== 内网视图 ==========
-view "internal-view" {
-    match-clients { internal-networks; };  # 匹配内网客户端
-    recursion yes;                          # 允许递归查询
+// ========== 测试视图 ==========
+view test_view {
+    match-clients { test_net; };            # 匹配测试网段客户端
+    recursion yes;
 
-    zone "." IN {
-        type hint;
-        file "named.ca";
-    };
-
-    zone "magedu.com" IN {
-        type master;
-        file "internal/magedu.com.zone";    # 内网区域文件
-        allow-update { none; };
-        allow-transfer { 10.0.0.15; };      # 允许从服务器传输
-        also-notify { 10.0.0.15; };         # 通知从服务器更新
-    };
-
-    zone "localhost.localdomain" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "localhost" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.127.in-addr.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "0.in-addr.arpa" IN {
-        type master;
-        file "named.empty";
-        allow-update { none; };
-    };
-
-    include "/etc/named.root.key";
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
+    # 包含测试环境专用区域配置
+    include "/etc/named.conf.test-zones";
 };
 
-// ========== 外网视图 ==========
-view "external-view" {
-    match-clients { external-networks; };   # 匹配外网客户端
-    recursion yes;                          # 允许递归查询
+// ========== 生产视图 ==========
+view prod_view {
+    match-clients { prod_net; };            # 匹配生产网段客户端
+    recursion yes;
 
-    zone "." IN {
-        type hint;
-        file "named.ca";
-    };
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
+    # 包含生产环境专用区域配置
+    include "/etc/named.conf.prod-zones";
+};
 
-    zone "magedu.com" IN {
-        type master;
-        file "external/magedu.com.zone";    # 外网区域文件
-        allow-update { none; };
-        allow-transfer { 192.168.1.15; };   # 允许从服务器传输
-        also-notify { 192.168.1.15; };      # 通知从服务器更新
-    };
+// ========== 其他视图 ==========
+view other_view {
+    match-clients { other_net; };           # 匹配其他所有客户端
+    recursion yes;
 
-    zone "localhost.localdomain" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "localhost" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.127.in-addr.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "0.in-addr.arpa" IN {
-        type master;
-        file "named.empty";
-        allow-update { none; };
-    };
-
-    include "/etc/named.root.key";
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
 };
 
 controls {
     inet * port 953 allow { any; } keys { "rndc-key"; };
 };
 
-# 2. 创建区域文件目录
-mkdir -p /var/named/internal
-mkdir -p /var/named/external
+# 2. 修改 /etc/named.rfc1912.zones，添加根域配置
+# 注意：使用 view 时，所有 zone 必须在 view 内部，包括根域
+cat >> /etc/named.rfc1912.zones << 'EOF'
 
-# 3. 创建内网区域文件
-cat > /var/named/internal/magedu.com.zone << 'EOF'
+zone "." IN {
+    type hint;
+    file "named.ca";
+};
+EOF
+
+# 3. 创建测试环境专用区域配置
+cat > /etc/named.conf.test-zones << 'EOF'
+zone "magedu.com" IN {
+    type master;
+    file "test/magedu.com.zone";
+    allow-update { none; };
+    allow-transfer { 10.0.0.15; };      # 允许从服务器传输
+    also-notify { 10.0.0.15; };         # 通知从服务器更新
+};
+EOF
+
+# 4. 创建生产环境专用区域配置
+cat > /etc/named.conf.prod-zones << 'EOF'
+zone "magedu.com" IN {
+    type master;
+    file "prod/magedu.com.zone";
+    allow-update { none; };
+    allow-transfer { 192.168.1.15; };   # 允许从服务器传输
+    also-notify { 192.168.1.15; };      # 通知从服务器更新
+};
+EOF
+
+# 5. 创建区域文件目录
+mkdir -p /var/named/test
+mkdir -p /var/named/prod
+
+# 6. 创建测试环境区域文件
+cat > /var/named/test/magedu.com.zone << 'EOF'
 $TTL 86400
-@   IN  SOA dns-server.magedu.com. admin.magedu.com. (
+@   IN  SOA @ admin.magedu.com. (
         2024010601  ; Serial
         3600        ; Refresh
         1800        ; Retry
@@ -224,19 +186,21 @@ $TTL 86400
         86400 )     ; Minimum TTL
 
 ; 名称服务器记录
-@       IN  NS  dns-server.magedu.com.
+        IN  NS  dns-server
+        IN  NS  dns-slave
 
-; A 记录 - 内网视图
-dns-server  IN  A   10.0.0.13       ; DNS 服务器内网 IP
-www         IN  A   10.0.0.14       ; Web 服务器内网 IP
-ftp         IN  A   10.0.0.20       ; FTP 服务器（仅内网可见）
-db          IN  A   10.0.0.30       ; 数据库服务器（仅内网可见）
+; A 记录 - 测试环境视图
+dns-server  IN  A   10.0.0.13       ; DNS 服务器测试 IP
+dns-slave  IN  A   10.0.0.15       ; DNS 服务器测试 IP
+www         IN  A   10.0.0.14       ; Web 服务器测试 IP
+ftp         IN  A   10.0.0.20       ; FTP 服务器（仅测试环境可见）
+db          IN  A   10.0.0.30       ; 数据库服务器（仅测试环境可见）
 EOF
 
-# 4. 创建外网区域文件
-cat > /var/named/external/magedu.com.zone << 'EOF'
+# 7. 创建生产环境区域文件
+cat > /var/named/prod/magedu.com.zone << 'EOF'
 $TTL 86400
-@   IN  SOA dns-server.magedu.com. admin.magedu.com. (
+@   IN  SOA @ admin.magedu.com. (
         2024010601  ; Serial
         3600        ; Refresh
         1800        ; Retry
@@ -244,32 +208,34 @@ $TTL 86400
         86400 )     ; Minimum TTL
 
 ; 名称服务器记录
-@       IN  NS  dns-server.magedu.com.
+@       IN  NS  dns-server
+@       IN  NS  dns-slave
 
-; A 记录 - 外网视图
-dns-server  IN  A   192.168.1.13    ; DNS 服务器外网 IP
-www         IN  A   192.168.1.14    ; Web 服务器外网 IP
-; 注意：ftp 和 db 记录在外网视图中不存在（隐藏内部资源）
+; A 记录 - 生产环境视图
+dns-server  IN  A   192.168.1.13    ; DNS 服务器生产 IP
+dns-slave  IN  A   192.168.1.15    ; DNS 服务器生产 IP
+www         IN  A   192.168.1.14    ; Web 服务器生产 IP
+; 注意：ftp 和 db 记录在生产环境视图中不存在（隐藏内部资源）
 EOF
 
-# 5. 修改文件所有权和权限
-chown -R named.named /var/named/internal
-chown -R named.named /var/named/external
-chmod 640 /var/named/internal/magedu.com.zone
-chmod 640 /var/named/external/magedu.com.zone
+# 8. 修改文件所有权和权限
+chown -R named.named /var/named/test
+chown -R named.named /var/named/prod
+chmod 640 /var/named/test/magedu.com.zone
+chmod 640 /var/named/prod/magedu.com.zone
 
-# 6. 检查区域文件语法
-named-checkzone magedu.com /var/named/internal/magedu.com.zone
-named-checkzone magedu.com /var/named/external/magedu.com.zone
+# 9. 检查区域文件语法
+named-checkzone magedu.com /var/named/test/magedu.com.zone
+named-checkzone magedu.com /var/named/prod/magedu.com.zone
 
-# 7. 检查总配置
+# 10. 检查总配置
 named-checkconf /etc/named.conf
 
-# 8. 重新加载配置
+# 11. 重新加载配置
 rndc reload
 rndc status
 
-# 9. 退出容器
+# 12. 退出容器
 exit
 ```
 
@@ -284,14 +250,15 @@ vim /etc/named.conf
 # 添加相同的 ACL 定义和基础配置，然后配置从视图：
 
 // 定义访问控制列表（ACL）- 与主服务器相同
-acl "internal-networks" {
+acl test_net {
     10.0.0.0/24;
-    localhost;
-    localnets;
 };
 
-acl "external-networks" {
+acl prod_net {
     192.168.1.0/24;
+};
+
+acl other_net {
     any;
 };
 
@@ -318,117 +285,68 @@ logging {
     };
 };
 
-// ========== 内网视图（从服务器）==========
-view "internal-view" {
-    match-clients { internal-networks; };
+// ========== 测试视图（从服务器）==========
+view test_view {
+    match-clients { test_net; };
     recursion yes;
 
-    zone "." IN {
-        type hint;
-        file "named.ca";
-    };
-
-    zone "magedu.com" IN {
-        type slave;                         # 从服务器类型
-        file "slaves/internal-magedu.com.zone";  # 从服务器区域文件存储位置
-        masters { 10.0.0.13; };            # 主服务器内网 IP
-    };
-
-    zone "localhost.localdomain" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "localhost" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.127.in-addr.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "0.in-addr.arpa" IN {
-        type master;
-        file "named.empty";
-        allow-update { none; };
-    };
-
-    include "/etc/named.root.key";
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
+    # 包含测试环境从服务器区域配置
+    include "/etc/named.conf.test-zones-slave";
 };
 
-// ========== 外网视图（从服务器）==========
-view "external-view" {
-    match-clients { external-networks; };
+// ========== 生产视图（从服务器）==========
+view prod_view {
+    match-clients { prod_net; };
     recursion yes;
 
-    zone "." IN {
-        type hint;
-        file "named.ca";
-    };
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
+    # 包含生产环境从服务器区域配置
+    include "/etc/named.conf.prod-zones-slave";
+};
 
-    zone "magedu.com" IN {
-        type slave;                         # 从服务器类型
-        file "slaves/external-magedu.com.zone";  # 从服务器区域文件存储位置
-        masters { 192.168.1.13; };         # 主服务器外网 IP
-    };
+// ========== 其他视图（从服务器）==========
+view other_view {
+    match-clients { other_net; };
+    recursion yes;
 
-    zone "localhost.localdomain" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "localhost" IN {
-        type master;
-        file "named.localhost";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "1.0.0.127.in-addr.arpa" IN {
-        type master;
-        file "named.loopback";
-        allow-update { none; };
-    };
-
-    zone "0.in-addr.arpa" IN {
-        type master;
-        file "named.empty";
-        allow-update { none; };
-    };
-
-    include "/etc/named.root.key";
+    # 包含默认区域配置
+    include "/etc/named.rfc1912.zones";
 };
 
 controls {
     inet * port 953 allow { any; } keys { "rndc-key"; };
 };
 
-# 2. 创建从服务器区域文件目录
+# 2. 创建测试环境从服务器区域配置
+cat > /etc/named.conf.test-zones-slave << 'EOF'
+zone "magedu.com" IN {
+    type slave;
+    file "slaves/test-magedu.com.zone";
+    masters { 10.0.0.13; };            # 主服务器测试网段 IP
+};
+EOF
+
+# 3. 创建生产环境从服务器区域配置
+cat > /etc/named.conf.prod-zones-slave << 'EOF'
+zone "magedu.com" IN {
+    type slave;
+    file "slaves/prod-magedu.com.zone";
+    masters { 192.168.1.13; };         # 主服务器生产网段 IP
+};
+EOF
+
+# 4. 创建从服务器区域文件目录
 mkdir -p /var/named/slaves
 chown named.named /var/named/slaves
 chmod 770 /var/named/slaves
 
-# 3. 检查配置语法
+# 5. 检查配置语法
 named-checkconf /etc/named.conf
 
-# 4. 重新加载配置（自动触发区域传输）
+# 6. 重新加载配置（自动触发区域传输）
 rndc reload
 rndc status
 
@@ -437,10 +355,10 @@ rndc status
 ls -l /var/named/slaves/
 # 应该看到 internal-magedu.com.zone 和 external-magedu.com.zone
 
-# 6. 查看区域传输日志
+# 8. 查看区域传输日志
 tail -20 /var/named/data/named.run
 
-# 7. 退出容器
+# 9. 退出容器
 exit
 ```
 
@@ -473,8 +391,8 @@ docker compose exec dns-slave dig @192.168.1.15 ftp.magedu.com +short
 # 预期输出：空或 NXDOMAIN (外网不可见)
 
 # 6. 查看从服务器的区域文件内容
-docker compose exec dns-slave cat /var/named/slaves/internal-magedu.com.zone
-docker compose exec dns-slave cat /var/named/slaves/external-magedu.com.zone
+docker compose exec dns-slave cat /var/named/slaves/test-magedu.com.zone
+docker compose exec dns-slave cat /var/named/slaves/prod-magedu.com.zone
 ```
 
 ## **客户端测试**

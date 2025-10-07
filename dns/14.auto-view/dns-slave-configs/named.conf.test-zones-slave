@@ -1,0 +1,5 @@
+zone "magedu.com" IN {
+    type slave;
+    file "slaves/test-magedu.com.zone";
+    masters { 10.0.0.13; };            // 主服务器测试网段 IP
+};

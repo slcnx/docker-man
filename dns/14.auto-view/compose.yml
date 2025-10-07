@@ -16,6 +16,9 @@ services:
       - "953/tcp"
     volumes:
       - ./dns-configs/named.conf:/etc/named.conf:ro
+      - ./dns-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-configs/named.conf.test-zones:/etc/named.conf.test-zones:ro
+      - ./dns-configs/named.conf.prod-zones:/etc/named.conf.prod-zones:ro
       - ./dns-configs/zones:/var/named/zones:ro
     restart: unless-stopped
     healthcheck:
@@ -41,6 +44,9 @@ services:
       - "953/tcp"
     volumes:
       - ./dns-slave-configs/named.conf:/etc/named.conf:ro
+      - ./dns-slave-configs/named.rfc1912.zones:/etc/named.rfc1912.zones:ro
+      - ./dns-slave-configs/named.conf.test-zones-slave:/etc/named.conf.test-zones-slave:ro
+      - ./dns-slave-configs/named.conf.prod-zones-slave:/etc/named.conf.prod-zones-slave:ro
     restart: unless-stopped
     depends_on:
       dns-server:

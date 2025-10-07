@@ -1,0 +1,5 @@
+zone "magedu.com" IN {
+    type slave;
+    file "slaves/prod-magedu.com.zone";
+    masters { 192.168.1.13; };         // 主服务器生产网段 IP
+};
