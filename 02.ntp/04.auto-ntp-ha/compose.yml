@@ -83,55 +83,7 @@ services:
       - ./configs/chrony-client.conf:/etc/chrony.conf:ro
     cap_add:
       - SYS_TIME
-    command: |
-      bash -c "
-        echo '===== NTP 高可用集群自动化测试 =====' &&
-        sleep 15 &&
-        echo '' &&
-
-        echo '========== 1. 服务器集群状态 ==========' &&
-        echo '--- Server 1 ---' &&
-        chronyc -h 10.0.0.121 tracking | grep -E 'Reference ID|Stratum|System time' &&
-        echo '' &&
-        echo '--- Server 2 ---' &&
-        chronyc -h 10.0.0.122 tracking | grep -E 'Reference ID|Stratum|System time' &&
-        echo '' &&
-        echo '--- Server 3 ---' &&
-        chronyc -h 10.0.0.123 tracking | grep -E 'Reference ID|Stratum|System time' &&
-        echo '' &&
-
-        echo '========== 2. 客户端时间源状态 ==========' &&
-        echo '(* = 当前同步源, + = 备用源)' &&
-        chronyc sources &&
-        echo '' &&
-
-        echo '========== 3. 客户端同步详情 ==========' &&
-        chronyc tracking &&
-        echo '' &&
-
-        echo '========== 4. 时间源统计 ==========' &&
-        chronyc sourcestats &&
-        echo '' &&
-
-        echo '========== 5. 当前时间 ==========' &&
-        date &&
-        echo '' &&
-
-        echo '========== 6. 高可用测试说明 ==========' &&
-        echo '✓ 客户端已配置 3 个 NTP 服务器' &&
-        echo '✓ chrony 自动选择最佳时间源（标记为 *)' &&
-        echo '✓ 其他源作为备用（标记为 +）' &&
-        echo '✓ 当主源失败时，自动切换到备用源' &&
-        echo '' &&
-        echo '测试故障切换：' &&
-        echo '  docker compose stop ntp-server-1' &&
-        echo '  docker compose exec client chronyc sources' &&
-        echo '  # 观察客户端是否切换到其他服务器' &&
-        echo '' &&
-
-        echo '===== 测试完成，保持运行 =====' &&
-        tail -f /dev/null
-      "
+    command: tail -f /dev/null
     depends_on:
       ntp-server-1:
         condition: service_healthy
