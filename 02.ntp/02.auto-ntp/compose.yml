@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  ntp-server:
+    build:
+      context: .
+      dockerfile: ../ntp.dockerfile
+    container_name: auto-ntp-server
+    hostname: ntp-server
+    networks:
+      ntp-net:
+        ipv4_address: 10.0.0.123
+    expose:
+      - "123/udp"
+    volumes:
+      - ./configs/chrony-server.conf:/etc/chrony.conf:ro
+    cap_add:
+      - SYS_TIME
+      - SYS_NICE
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "chronyc", "tracking"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: ../ntp.dockerfile
+    container_name: auto-ntp-client
+    hostname: client
+    networks:
+      ntp-net:
+        ipv4_address: 10.0.0.124
+    volumes:
+      - ./configs/chrony-client.conf:/etc/chrony.conf:ro
+    cap_add:
+      - SYS_TIME
+    command: |
+      bash -c "
+        echo '===== NTP 自动化测试开始 =====' &&
+        sleep 10 &&
+        echo '' &&
+        echo '1. 查看 NTP 服务器连接状态:' &&
+        chronyc sources -v &&
+        echo '' &&
+        echo '2. 查看时间同步详细信息:' &&
+        chronyc tracking &&
+        echo '' &&
+        echo '3. 查看当前时间:' &&
+        date &&
+        timedatectl &&
+        echo '' &&
+        echo '4. 查看时间源统计:' &&
+        chronyc sourcestats &&
+        echo '' &&
+        echo '===== 测试完成，保持运行 =====' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      ntp-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  ntp-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1

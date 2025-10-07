@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  ntp-server:
+    build:
+      context: .
+      dockerfile: ../ntp.dockerfile
+    container_name: ntp-server
+    hostname: ntp-server
+    networks:
+      ntp-net:
+        ipv4_address: 10.0.0.123
+    ports:
+      - "123/udp"
+    cap_add:
+      - SYS_TIME
+      - SYS_NICE
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: ../ntp.dockerfile
+    container_name: ntp-client
+    hostname: client
+    networks:
+      ntp-net:
+        ipv4_address: 10.0.0.124
+    cap_add:
+      - SYS_TIME
+    command: tail -f /dev/null
+    depends_on:
+      - ntp-server
+    restart: unless-stopped
+
+networks:
+  ntp-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+          gateway: 10.0.0.1
