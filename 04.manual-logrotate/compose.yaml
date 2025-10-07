@@ -1,0 +1,19 @@
+services:
+  logrotate:
+    build:
+      context: ../03.rsyslog
+      dockerfile: rsyslog.dockerfile
+    container_name: logrotate-test
+    hostname: logrotate-test
+    command: >
+      bash -c "
+        /usr/lib/systemd/systemd-journald &
+        sleep 2 &&
+        ln -sf /run/systemd/journal/dev-log /dev/log &&
+        rsyslogd &&
+        tail -f /dev/null
+      "
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./logrotate.conf:/etc/logrotate.d/test-app:ro

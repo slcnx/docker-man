@@ -1,0 +1,129 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库（存储日志）
+  mysql-server:
+    image: mysql:8.0
+    container_name: mysql-server
+    hostname: mysql-server
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.16
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: Syslog
+      MYSQL_USER: rsyslog
+      MYSQL_PASSWORD: rsyslogpass
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "rsyslog", "-prsyslogpass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 日志服务器（接收客户端日志，转发到 MySQL）
+  log-server:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: log-server
+    hostname: log-server
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.13
+    volumes:
+      - ./server-configs/rsyslog.conf:/etc/rsyslog.conf:ro
+    ports:
+      - "514:514/tcp"
+      - "514:514/udp"
+    command: >
+      bash -c "
+        echo 'Installing rsyslog-mysql and mariadb client...' &&
+        yum install -y rsyslog-mysql mariadb &&
+        echo 'Waiting for MySQL to be ready...' &&
+        sleep 10 &&
+        echo 'Importing MySQL table structure...' &&
+        mysql -h mysql-server -u rsyslog -prsyslogpass Syslog -e 'source /usr/share/doc/rsyslog/mysql-createDB.sql;' ; \
+        echo 'Starting systemd-journald...' &&
+        /usr/lib/systemd/systemd-journald &
+        sleep 3 &&
+        ln -sf /run/systemd/journal/dev-log /dev/log &&
+        echo 'Starting rsyslogd...' &&
+        rsyslogd -n
+      "
+    depends_on:
+      mysql-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "netstat -tunlp | grep -q ':514'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # 客户端 1
+  client-1:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: client-1
+    hostname: client-1
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.11
+    volumes:
+      - ./client-configs/rsyslog.conf:/etc/rsyslog.conf:ro
+    command: >
+      bash -c "
+        /usr/lib/systemd/systemd-journald &
+        sleep 2 &&
+        ln -sf /run/systemd/journal/dev-log /dev/log &&
+        rsyslogd -n &
+        sleep 3 &&
+        logger -p user.info 'CLIENT-1: Started and ready to send logs' &&
+        logger -p local0.warning 'CLIENT-1: Application warning test' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      log-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 客户端 2
+  client-2:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: client-2
+    hostname: client-2
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.12
+    volumes:
+      - ./client-configs/rsyslog.conf:/etc/rsyslog.conf:ro
+    command: >
+      bash -c "
+        /usr/lib/systemd/systemd-journald &
+        sleep 2 &&
+        ln -sf /run/systemd/journal/dev-log /dev/log &&
+        rsyslogd -n &
+        sleep 3 &&
+        logger -p user.info 'CLIENT-2: Started and ready to send logs' &&
+        logger -p local1.notice 'CLIENT-2: Database connection test' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      log-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  rsyslog-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1

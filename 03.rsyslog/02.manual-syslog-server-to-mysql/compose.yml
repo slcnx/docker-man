@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # 日志服务器（接收客户端日志，转发到 MySQL）
+  log-server:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: log-server
+    hostname: log-server
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.13
+    ports:
+      - "514:514/tcp"
+      - "514:514/udp"
+    command: tail -f /dev/null
+    depends_on:
+      - mysql-server
+    restart: unless-stopped
+
+  # MySQL 数据库（存储日志）
+  mysql-server:
+    image: mysql:8.0
+    container_name: mysql-server
+    hostname: mysql-server
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.16
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: Syslog
+      MYSQL_USER: rsyslog
+      MYSQL_PASSWORD: rsyslogpass
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+
+  # 客户端 1
+  client-1:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: client-1
+    hostname: client-1
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.11
+    command: tail -f /dev/null
+    depends_on:
+      - log-server
+    restart: unless-stopped
+
+  # 客户端 2
+  client-2:
+    build:
+      context: ..
+      dockerfile: rsyslog.dockerfile
+    container_name: client-2
+    hostname: client-2
+    networks:
+      rsyslog-net:
+        ipv4_address: 172.20.0.12
+    command: tail -f /dev/null
+    depends_on:
+      - log-server
+    restart: unless-stopped
+
+networks:
+  rsyslog-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1

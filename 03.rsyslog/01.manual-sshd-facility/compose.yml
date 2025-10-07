@@ -1,0 +1,16 @@
+services:
+  rsyslog:
+    build:
+      context: ../
+      dockerfile: rsyslog.dockerfile
+    container_name: rsyslog-facility-test
+    hostname: rsyslog-test
+    command: >
+      bash -c "
+        /usr/lib/systemd/systemd-journald &
+        sleep 2 &&
+        ln -sf /run/systemd/journal/dev-log /dev/log &&
+        rsyslogd -dn
+      "
+    stdin_open: true
+    tty: true
