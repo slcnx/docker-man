@@ -1,0 +1,132 @@
+version: '3.8'
+
+services:
+  nfs-server:
+    build:
+      context: .
+      dockerfile: ../nfs.dockerfile
+    container_name: auto-nfs-server
+    hostname: nfs-server
+    networks:
+      nfs-net:
+        ipv4_address: 10.0.4.10
+    ports:
+      - "2049/tcp"
+      - "2049/udp"
+      - "111/tcp"
+      - "111/udp"
+      - "20048/tcp"
+      - "20048/udp"
+    privileged: true
+    volumes:
+      - nfs-data:/data/share
+      - ./configs/exports:/etc/exports:ro
+    command: |
+      bash -c "
+        echo '===== NFS 服务器自动配置开始 =====' &&
+        echo '1. 启动 RPC 服务' &&
+        rpcbind &&
+        rpc.statd &&
+        sleep 1 &&
+        echo '' &&
+        echo '2. 挂载 nfsd' &&
+        mount -t nfsd nfsd /proc/fs/nfsd 2>/dev/null || true &&
+        echo '' &&
+        echo '3. 启动 NFS 服务' &&
+        rpc.nfsd &&
+        rpc.mountd &&
+        sleep 1 &&
+        echo '' &&
+        echo '4. 创建测试文件' &&
+        echo 'NFS Auto Test - Server Data' > /data/share/test.txt &&
+        echo 'Timestamp: \$(date)' >> /data/share/test.txt &&
+        echo '' &&
+        echo '5. 导出 NFS 共享' &&
+        exportfs -arv &&
+        echo '' &&
+        echo '6. 验证导出状态' &&
+        exportfs -v &&
+        showmount -e localhost &&
+        echo '' &&
+        echo '7. 检查 RPC 服务' &&
+        rpcinfo -p | grep -E 'nfs|mount|portmap' &&
+        echo '' &&
+        echo '===== NFS 服务器配置完成，保持运行 =====' &&
+        tail -f /dev/null
+      "
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "showmount", "-e", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  nfs-client:
+    build:
+      context: .
+      dockerfile: ../nfs.dockerfile
+    container_name: auto-nfs-client
+    hostname: nfs-client
+    networks:
+      nfs-net:
+        ipv4_address: 10.0.4.11
+    privileged: true
+    command: |
+      bash -c "
+        echo '===== NFS 客户端自动测试开始 =====' &&
+        sleep 10 &&
+        echo '' &&
+        echo '1. 启动 RPC 服务' &&
+        rpcbind &&
+        rpc.statd &&
+        echo '' &&
+        echo '2. 查看服务器共享列表' &&
+        showmount -e 10.0.4.10 &&
+        echo '' &&
+        echo '3. 创建挂载点' &&
+        mkdir -p /mnt/nfs &&
+        echo '' &&
+        echo '4. 挂载 NFS 共享' &&
+        mount -t nfs 10.0.4.10:/data/share /mnt/nfs &&
+        echo '' &&
+        echo '5. 验证挂载状态' &&
+        df -h | grep nfs &&
+        mount | grep nfs &&
+        echo '' &&
+        echo '6. 读取服务器文件' &&
+        cat /mnt/nfs/test.txt &&
+        echo '' &&
+        echo '7. 测试写入' &&
+        echo 'Client write test - \$(date)' > /mnt/nfs/client-test.txt &&
+        ls -lh /mnt/nfs/ &&
+        echo '' &&
+        echo '8. 性能测试（写入 10MB）' &&
+        dd if=/dev/zero of=/mnt/nfs/testfile bs=1M count=10 2>&1 | grep -E 'copied|MB' &&
+        echo '' &&
+        echo '9. 性能测试（读取 10MB）' &&
+        dd if=/mnt/nfs/testfile of=/dev/null bs=1M 2>&1 | grep -E 'copied|MB' &&
+        rm -f /mnt/nfs/testfile &&
+        echo '' &&
+        echo '10. NFS 统计信息' &&
+        nfsstat -m 2>/dev/null || echo 'nfsstat 不可用' &&
+        echo '' &&
+        echo '===== 测试完成，保持运行 =====' &&
+        tail -f /dev/null
+      "
+    depends_on:
+      nfs-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  nfs-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.4.0/24
+          gateway: 10.0.4.1
+
+volumes:
+  nfs-data:
+    driver: local

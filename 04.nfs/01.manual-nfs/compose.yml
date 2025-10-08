@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  nfs-server:
+    build:
+      context: .
+      dockerfile: ../nfs.dockerfile
+    container_name: nfs-server
+    hostname: nfs-server
+    networks:
+      nfs-net:
+        ipv4_address: 10.0.4.10
+    ports:
+      - "2049/tcp"
+      - "2049/udp"
+      - "111/tcp"
+      - "111/udp"
+      - "20048/tcp"
+      - "20048/udp"
+    privileged: true
+    volumes:
+      - nfs-data:/data/share
+    restart: unless-stopped
+
+  nfs-client:
+    build:
+      context: .
+      dockerfile: ../nfs.dockerfile
+    container_name: nfs-client
+    hostname: nfs-client
+    networks:
+      nfs-net:
+        ipv4_address: 10.0.4.11
+    privileged: true
+    command: tail -f /dev/null
+    depends_on:
+      - nfs-server
+    restart: unless-stopped
+
+networks:
+  nfs-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.4.0/24
+          gateway: 10.0.4.1
+
+volumes:
+  nfs-data:
+    driver: local
