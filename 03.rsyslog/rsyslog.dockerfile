@@ -1,17 +1,10 @@
-FROM rockylinux:9.3.20231119
- 
+# 使用公共基础镜像
+FROM docker-man-base:latest
+
+# 安装 Rsyslog 服务特定软件包
 RUN yum install -y  \
-    net-tools \
-    psmisc lsof \
-    jq \
-    procps-ng \
-    vim \
-    man \
-    iproute \
-    iputils \
-    tcpdump \
-    rsyslog-doc \
     rsyslog \
+    rsyslog-doc \
     systemd && \
     yum clean all
 

@@ -1,17 +1,10 @@
-FROM rockylinux:9.3.20231119
+# 使用公共基础镜像
+FROM docker-man-base:latest
 
-# 安装DNS服务和相关工具
+# 安装 DNS 服务特定软件包
 RUN yum install -y \
     bind \
     bind-utils \
-    net-tools \
-    psmisc \
-    procps-ng \
-    vim \
-    man \
-    iproute \
-    file \
-    iputils \
     nscd && \
     yum clean all
 

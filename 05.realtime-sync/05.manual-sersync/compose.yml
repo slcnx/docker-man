@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  sersync-source:
+    build:
+      context: ..
+      dockerfile: sersync.dockerfile
+    container_name: sersync-source
+    hostname: sersync-source
+    privileged: true # 内核参数
+    networks:
+      sersync-net:
+        ipv4_address: 10.0.5.40
+    volumes:
+      - source-data:/data/source
+    restart: unless-stopped
+
+  sersync-backup:
+    build:
+      context: ..
+      dockerfile: sersync.dockerfile
+    container_name: sersync-backup
+    hostname: sersync-backup
+    networks:
+      sersync-net:
+        ipv4_address: 10.0.5.41
+    volumes:
+      - backup-data:/data/backup
+    ports:
+      - "873:873"  # Rsync daemon 端口（如果使用 daemon 模式）
+      - "8022:22"  # SSH 端口（如果使用 SSH 模式）
+    restart: unless-stopped
+
+networks:
+  sersync-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.5.0/24
+          gateway: 10.0.5.1
+
+volumes:
+  source-data:
+    driver: local
+  backup-data:
+    driver: local

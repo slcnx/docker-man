@@ -10,7 +10,8 @@
       "Bash(git push:*)",
       "Bash(git commit:*)",
       "Bash(docker exec:*)",
-      "Bash(iptables:*)"
+      "Bash(iptables:*)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []

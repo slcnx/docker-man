@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  rsync-source:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-source
+    hostname: rsync-source
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.10
+    volumes:
+      - source-data:/data/source
+    restart: unless-stopped
+
+  rsync-backup:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-backup
+    hostname: rsync-backup
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.11
+    volumes:
+      - backup-data:/data/backup
+    depends_on:
+      - rsync-source
+    restart: unless-stopped
+
+networks:
+  rsync-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.5.0/24
+          gateway: 10.0.5.1
+
+volumes:
+  source-data:
+    driver: local
+  backup-data:
+    driver: local

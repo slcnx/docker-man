@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  rsync-client:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-client
+    hostname: rsync-client
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.30
+    volumes:
+      - client-data:/data/source
+      - shared-config:/shared-config    # 共享配置卷（交换密码）
+      - ./scripts:/scripts:ro
+    environment:
+      - RSYNC_SERVER=10.0.5.31
+      - RSYNC_MODULE=backup
+      - RSYNC_USER=rsyncuser
+      - SYNC_INTERVAL=5
+    command: /scripts/auto-rsync-client.sh
+    depends_on:
+      - rsync-server
+    restart: unless-stopped
+
+  rsync-server:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-server
+    hostname: rsync-server
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.31
+    volumes:
+      - server-data:/data/backup
+      - shared-config:/shared-config    # 共享配置卷（共享密码）
+      - ./scripts:/scripts:ro
+    ports:
+      - "873:873"
+    environment:
+      - RSYNC_USER=rsyncuser
+      - RSYNC_PASSWORD=rsyncpass123
+      - RSYNC_MODULE=backup
+    command: /scripts/auto-rsync-server.sh
+    restart: unless-stopped
+
+networks:
+  rsync-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.5.0/24
+          gateway: 10.0.5.1
+
+volumes:
+  client-data:
+    driver: local
+  server-data:
+    driver: local
+  shared-config:
+    driver: local

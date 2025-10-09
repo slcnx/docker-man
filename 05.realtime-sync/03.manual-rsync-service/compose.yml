@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  rsync-client:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-client
+    hostname: rsync-client
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.20
+    volumes:
+      - client-data:/data/source
+    restart: unless-stopped
+
+  rsync-server:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    container_name: rsync-server
+    hostname: rsync-server
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.21
+    volumes:
+      - server-data:/data/backup
+    ports:
+      - "873:873"
+    restart: unless-stopped
+
+networks:
+  rsync-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.5.0/24
+          gateway: 10.0.5.1
+
+volumes:
+  client-data:
+    driver: local
+  server-data:
+    driver: local

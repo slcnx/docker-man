@@ -1,16 +1,9 @@
-FROM rockylinux:9.3.20231119
+# 使用公共基础镜像
+FROM docker-man-base:latest
 
-# 安装 NTP 服务（chrony）和相关工具
+# 安装 NTP 服务特定软件包
 RUN yum install -y \
-    chrony \
-    net-tools \
-    psmisc \
-    procps-ng \
-    vim \
-    man \
-    iproute \
-    iputils \
-    tcpdump && \
+    chrony && \
     yum clean all
 
 # 暴露 NTP 端口

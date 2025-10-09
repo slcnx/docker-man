@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  rsync-source:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    image: rsync-inotify:latest
+    container_name: rsync-source
+    hostname: rsync-source
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.10
+    volumes:
+      - source-data:/data/source
+      - ./scripts:/scripts:ro
+      - ssh-keys:/shared-keys     # 共享卷用于交换密钥
+    environment:
+      - DEST_HOST=rsync-backup
+      - DEST_DIR=/data/backup/
+      - SOURCE_DIR=/data/source/
+      - RSYNC_OPTS=-avz --delete
+      - SSH_OPTS=-o StrictHostKeyChecking=no
+      - SYNC_INTERVAL=5
+      - MAX_RETRIES=10
+    command: /scripts/rsync-inotify.sh
+    depends_on:
+      - rsync-backup
+    restart: unless-stopped
+
+  rsync-backup:
+    build:
+      context: ..
+      dockerfile: rsync_inotify.dockerfile
+    image: rsync-inotify:latest
+    container_name: rsync-backup
+    hostname: rsync-backup
+    networks:
+      rsync-net:
+        ipv4_address: 10.0.5.11
+    volumes:
+      - backup-data:/data/backup
+      - ./scripts:/scripts:ro
+      - ssh-keys:/shared-keys     # 共享卷用于交换密钥
+    command: /scripts/start-sshd.sh
+    restart: unless-stopped
+
+networks:
+  rsync-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.5.0/24
+          gateway: 10.0.5.1
+
+volumes:
+  source-data:
+    driver: local
+  backup-data:
+    driver: local
+  ssh-keys:
+    driver: local
