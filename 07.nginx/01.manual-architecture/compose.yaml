@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  nginx-demo:
+    container_name: nginx-rocky-compile
+    hostname: nginx-rocky-compile
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.10
+    ports:
+      - "8080:80"
+    command: sh -c "tail -f /dev/null"
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

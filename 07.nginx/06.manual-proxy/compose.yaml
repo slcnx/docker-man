@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Nginx 代理服务器（Ubuntu）
+  nginx-proxy:
+    container_name: nginx-proxy
+    hostname: nginx-proxy
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.60
+    ports:
+      - "8060:80"      # HTTP 端口
+      - "8061:443"     # HTTPS 端口
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # 后端 Web 服务器 1（Rocky）
+  nginx-backend-1:
+    container_name: nginx-backend-1
+    hostname: nginx-backend-1
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.61
+    ports:
+      - "8062:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # 后端 Web 服务器 2（Ubuntu）
+  nginx-backend-2:
+    container_name: nginx-backend-2
+    hostname: nginx-backend-2
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.62
+    ports:
+      - "8063:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # 静态资源服务器（Rocky）
+  nginx-static:
+    container_name: nginx-static
+    hostname: nginx-static
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.63
+    ports:
+      - "8064:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

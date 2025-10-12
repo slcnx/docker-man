@@ -1,0 +1,32 @@
+# Ubuntu 24.04 二进制安装 Nginx
+FROM ubuntu:24.04
+
+LABEL maintainer="docker-man"
+LABEL description="Nginx binary installation on Ubuntu 24.04 via APT"
+
+# 设置非交互模式
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 更新软件源并安装Nginx完整环境
+RUN apt update && \
+    apt install -y \
+        nginx \
+        nginx-core \
+        fcgiwrap \
+        nginx-doc && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 配置文件目录：/etc/nginx/
+# 网站根目录：/var/www/html/
+# 日志目录：/var/log/nginx/
+
+# 暴露端口
+EXPOSE 80 443
+
+# 创建软链接（方便使用）
+RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
+    ln -sf /dev/stderr /var/log/nginx/error.log
+
+# 启动Nginx（前台运行）
+CMD ["nginx", "-g", "daemon off;"]

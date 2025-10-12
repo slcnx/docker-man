@@ -1,0 +1,102 @@
+# Ubuntu 24.04 源码编译安装 Nginx
+FROM ubuntu:24.04 AS builder
+
+LABEL maintainer="docker-man"
+LABEL description="Nginx compiled from source on Ubuntu 24.04"
+
+# 设置非交互模式和Nginx版本
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NGINX_VERSION=1.24.0
+
+# 第一组：基础工具
+RUN apt update && \
+    apt install -y \
+    wget net-tools      \
+    iproute2     iputils-ping  \
+       tcpdump     netcat-openbsd \
+        psmisc     lsof \
+            procps vim     \
+            man-db  tree  \
+               file  jq
+
+# 安装编译环境和依赖（严格按照文档要求）
+# 第一组：基础编译环境
+RUN apt update && \
+    apt install -y \
+        build-essential \
+        gcc \
+        g++ \
+        libc6 \
+        libc6-dev \
+        libpcre3 \
+        libpcre3-dev \
+        libssl-dev \
+        libsystemd-dev \
+        zlib1g-dev && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 第二组：额外功能模块依赖（默认二进制环境开启功能所依赖的库）
+RUN apt update && \
+    apt install -y \
+        libxml2 \
+        libxml2-dev \
+        libxslt1-dev \
+        php-gd \
+        libgd-dev \
+        geoip-database \
+        libgeoip-dev && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装下载工具
+RUN apt update && \
+    apt install -y wget curl && \
+    apt clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# 创建nginx用户
+RUN useradd -r -s /usr/sbin/nologin nginx
+
+# 下载并编译 Nginx
+WORKDIR /tmp
+RUN wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
+    tar xzf nginx-${NGINX_VERSION}.tar.gz && \
+    cd nginx-${NGINX_VERSION} && \
+    ./configure \
+        --prefix=/data/server/nginx \
+        --user=nginx \
+        --group=nginx \
+        --with-http_ssl_module \
+        --with-http_v2_module \
+        --with-http_realip_module \
+        --with-http_stub_status_module \
+        --with-http_gzip_static_module \
+        --with-pcre \
+        --with-stream \
+        --with-stream_ssl_module \
+        --with-stream_realip_module && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/nginx-${NGINX_VERSION}*
+
+# 创建PID目录并设置权限
+RUN mkdir -p /data/server/nginx/run /data/server/nginx/temp/client /data/server/nginx/temp/proxy /data/server/nginx/temp/fastcgi /data/server/nginx/temp/uwsgi /data/server/nginx/temp/scgi && \
+    chown -R nginx:nginx /data/server/nginx
+
+# 配置PID文件路径
+RUN sed -i '1a pid        /data/server/nginx/run/nginx.pid;' \
+    /data/server/nginx/conf/nginx.conf
+
+# 创建软链接
+RUN ln -sf /data/server/nginx/sbin/nginx /usr/local/bin/nginx
+
+# 暴露端口
+EXPOSE 80 443
+
+# 工作目录
+WORKDIR /data/server/nginx
+
+# 启动 Nginx
+CMD ["/data/server/nginx/sbin/nginx", "-g", "daemon off;"]

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # Ubuntu 源码编译版本 - 用于平滑升级演示
+  nginx-ubuntu-upgrade:
+    container_name: nginx-ubuntu-upgrade
+    hostname: nginx-ubuntu-upgrade
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.30
+    ports:
+      - "8030:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+    privileged: true  # 平滑升级需要发送信号
+
+  # Rocky 源码编译版本 - 用于模块扩展演示
+  nginx-rocky-module:
+    container_name: nginx-rocky-module
+    hostname: nginx-rocky-module
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.31
+    ports:
+      - "8031:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

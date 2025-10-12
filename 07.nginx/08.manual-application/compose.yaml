@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Nginx + PHP-FPM 应用服务器（Ubuntu）
+  nginx-app:
+    container_name: nginx-app
+    hostname: nginx-app
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.80
+    ports:
+      - "8080:80"      # HTTP 应用端口
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # MySQL 数据库服务器（用于 Discuz）
+  mysql-server:
+    container_name: mysql-server
+    hostname: mysql-server
+    image: mysql:8.0
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.81
+    ports:
+      - "3308:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: discuz
+      MYSQL_USER: discuzer
+      MYSQL_PASSWORD: "123456"
+    command: --default-authentication-plugin=mysql_native_password
+    tty: true
+    stdin_open: true
+
+  # Redis 服务器（用于第三方模块演示）
+  redis-server:
+    container_name: redis-server
+    hostname: redis-server
+    image: redis:7-alpine
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.82
+    ports:
+      - "6380:6379"
+    command: redis-server --requirepass redispass
+    tty: true
+    stdin_open: true
+
+  # Tengine 演示服务器（Rocky）
+  tengine-server:
+    container_name: tengine-server
+    hostname: tengine-server
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.83
+    ports:
+      - "8083:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # OpenResty 演示服务器（Ubuntu）
+  openresty-server:
+    container_name: openresty-server
+    hostname: openresty-server
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.84
+    ports:
+      - "8084:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # Django 应用服务器（Python + uWSGI）
+  django-app:
+    container_name: django-app
+    hostname: django-app
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.85
+    ports:
+      - "8085:8000"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

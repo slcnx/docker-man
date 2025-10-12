@@ -1,0 +1,86 @@
+# Rocky Linux 9 源码编译安装 Nginx
+# FROM rockylinux:9.3.20231119 AS builder
+FROM docker-man-base:latest
+
+LABEL maintainer="docker-man"
+LABEL description="Nginx compiled from source on Rocky Linux 9"
+
+# 设置Nginx版本
+ENV NGINX_VERSION=1.24.0
+
+# 安装编译环境和依赖（严格按照文档要求）
+# 第一组：基础编译环境
+RUN yum install -y \
+        gcc \
+        make \
+        gcc-c++ \
+        glibc \
+        glibc-devel \
+        pcre \
+        pcre-devel \
+        openssl \
+        openssl-devel \
+        systemd-devel \
+        zlib-devel && \
+    yum clean all
+
+# 第二组：额外功能模块依赖（默认二进制环境开启功能所依赖的库）
+RUN yum install -y \
+        libxml2 \
+        libxml2-devel \
+        libxslt \
+        libxslt-devel \
+        php-gd \
+        gd-devel && \
+    yum clean all
+
+# 安装下载工具
+RUN yum install -y wget tar && \
+    yum clean all && \
+    rm -rf /var/cache/yum
+
+# 创建nginx用户
+RUN useradd -r -s /usr/sbin/nologin nginx
+
+# 下载并编译 Nginx
+WORKDIR /tmp
+RUN wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
+    tar xzf nginx-${NGINX_VERSION}.tar.gz && \
+    cd nginx-${NGINX_VERSION} && \
+    ./configure \
+        --prefix=/data/server/nginx \
+        --user=nginx \
+        --group=nginx \
+        --with-http_ssl_module \
+        --with-http_v2_module \
+        --with-http_realip_module \
+        --with-http_stub_status_module \
+        --with-http_gzip_static_module \
+        --with-pcre \
+        --with-stream \
+        --with-stream_ssl_module \
+        --with-stream_realip_module && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && \
+    rm -rf /tmp/nginx-${NGINX_VERSION}*
+
+# 创建PID目录并设置权限
+RUN mkdir -p /data/server/nginx/run /data/server/nginx/temp/client /data/server/nginx/temp/proxy /data/server/nginx/temp/fastcgi /data/server/nginx/temp/uwsgi /data/server/nginx/temp/scgi && \
+    chown -R nginx:nginx /data/server/nginx
+
+# 配置PID文件路径
+RUN sed -i '1a pid        /data/server/nginx/run/nginx.pid;' \
+    /data/server/nginx/conf/nginx.conf
+
+# 创建软链接
+RUN ln -sf /data/server/nginx/sbin/nginx /usr/local/bin/nginx
+
+# 暴露端口
+EXPOSE 80 443
+
+# 工作目录
+WORKDIR /data/server/nginx
+
+# 启动 Nginx
+CMD ["/data/server/nginx/sbin/nginx", "-g", "daemon off;"]

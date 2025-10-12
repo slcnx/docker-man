@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Ubuntu 虚拟主机演示容器
+  nginx-ubuntu-vhost:
+    container_name: nginx-ubuntu-vhost
+    hostname: nginx-ubuntu-vhost
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.40
+    ports:
+      - "8040:80"
+      - "8041:81"
+      - "8042:82"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # Rocky 虚拟主机演示容器
+  nginx-rocky-vhost:
+    container_name: nginx-rocky-vhost
+    hostname: nginx-rocky-vhost
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.41
+        # 添加额外的 IP 地址用于基于 IP 的虚拟主机演示
+        aliases:
+          - nginx-ip1
+          - nginx-ip2
+          - nginx-ip3
+    ports:
+      - "8043:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

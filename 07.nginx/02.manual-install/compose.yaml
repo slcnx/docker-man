@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Ubuntu 源码编译版本
+  nginx-ubuntu-compile:
+    container_name: nginx-ubuntu-compile
+    hostname: nginx-ubuntu-compile
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.20
+    ports:
+      - "8080:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # Rocky 源码编译版本
+  nginx-rocky-compile:
+    container_name: nginx-rocky-compile
+    hostname: nginx-rocky-compile
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.21
+    ports:
+      - "8081:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

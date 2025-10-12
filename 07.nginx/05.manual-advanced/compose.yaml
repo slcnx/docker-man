@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # Ubuntu 高级功能演示容器
+  nginx-ubuntu-advanced:
+    container_name: nginx-ubuntu-advanced
+    hostname: nginx-ubuntu-advanced
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.50
+    ports:
+      - "8050:80"
+      - "8443:443"  # HTTPS 端口
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+  # Rocky 高级功能演示容器（带 PHP 支持）
+  nginx-rocky-php:
+    container_name: nginx-rocky-php
+    hostname: nginx-rocky-php
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.51
+    ports:
+      - "8051:80"
+    command: tail -f /dev/null
+    tty: true
+    stdin_open: true
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

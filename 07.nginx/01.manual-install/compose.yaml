@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  # Ubuntu 二进制安装
+  nginx-ubuntu-apt:
+    container_name: nginx-ubuntu-apt
+    hostname: nginx-ubuntu-apt
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-apt
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.10
+
+  # Rocky 二进制安装
+  nginx-rocky-yum:
+    container_name: nginx-rocky-yum
+    hostname: nginx-rocky-yum
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-yum
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.11
+
+  # Ubuntu 源码编译安装
+  nginx-ubuntu-compile:
+    container_name: nginx-ubuntu-compile
+    hostname: nginx-ubuntu-compile
+    build:
+      context: ..
+      dockerfile: Dockerfile.ubuntu-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.12
+
+  # Rocky 源码编译安装
+  nginx-rocky-compile:
+    container_name: nginx-rocky-compile
+    hostname: nginx-rocky-compile
+    build:
+      context: ..
+      dockerfile: Dockerfile.rocky-compile
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.13
+
+  # Ubuntu 手工编译环境
+  nginx-ubuntu-manual:
+    image: ubuntu:24.04
+    container_name: nginx-ubuntu-manual
+    hostname: nginx-ubuntu-manual
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.14
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+
+  # Rocky 手工编译环境
+  nginx-rocky-manual:
+    image: rockylinux:9.3.20231119
+    container_name: nginx-rocky-manual
+    hostname: nginx-rocky-manual
+    stdin_open: true
+    tty: true
+    command: /bin/bash
+    networks:
+      nginx-net:
+        ipv4_address: 10.0.7.15
+
+networks:
+  nginx-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.7.0/24
+          gateway: 10.0.7.1

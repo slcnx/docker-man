@@ -12,12 +12,16 @@ gpgkey=https://mirrors.aliyun.com/epel/RPM-GPG-KEY-EPEL-9
 EOF
 
 # 安装公共工具（所有项目通用）
+# RockyLinux: wget net-tools      iproute     iputils     tcpdump     nmap-ncat psmisc     lsof     procps-ng vim     man  tree     file  jq
+# Ubuntu: wget net-tools      iproute2     iputils-ping     tcpdump     netcat-openbsd psmisc     lsof     procps vim     man-db  tree     file  jq
+
 RUN yum install -y  \
     # 网络工具
     net-tools  \
     iproute \
     iputils \
     tcpdump \
+    wget \
     nmap-ncat \
     # 进程管理工具
     psmisc \
