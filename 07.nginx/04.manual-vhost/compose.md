@@ -1,4 +1,4 @@
-# Docker Compose Nginx 虚拟主机与配置实践指南
+# sudo docker compose Nginx 虚拟主机与配置实践指南
 
 ## 📚 第一部分：基础知识
 
@@ -176,14 +176,14 @@ location ~ ^/images/ {
 Docker Bridge 网络：nginx-net (10.0.7.0/24)
 ├── 10.0.7.1   - 网关（Docker 网桥）
 ├── 10.0.7.40  - Ubuntu 虚拟主机演示（nginx-ubuntu-vhost）
-│   ├── 端口：8040:80, 8041:81, 8042:82
+│   ├── 端口：80, 81, 82
 │   └── 用途：基于端口、域名的虚拟主机
 └── 10.0.7.41  - Rocky 虚拟主机演示（nginx-rocky-vhost）
-    ├── 端口：8043:80
+    ├── 端口：80
     └── 用途：访问控制、日志管理、状态监控
 ```
 
-### 2.2 Docker Compose 配置说明
+### 2.2 sudo docker compose 配置说明
 
 本环境包含两个容器：
 - **nginx-ubuntu-vhost**：演示多端口、多域名虚拟主机
@@ -200,13 +200,13 @@ Docker Bridge 网络：nginx-net (10.0.7.0/24)
 cd /home/www/docker-man/07.nginx/04.manual-vhost
 
 # 2. 启动服务
-docker compose up -d
+sudo docker compose up -d
 
 # 3. 检查服务状态
-docker compose ps
+sudo docker compose ps
 
 # 4. 进入 Ubuntu 容器
-docker compose exec -it nginx-ubuntu-vhost bash
+sudo docker compose exec -it nginx-ubuntu-vhost bash
 ```
 
 ---
@@ -224,21 +224,21 @@ docker compose exec -it nginx-ubuntu-vhost bash
 #### 3.2.2 准备网站文件
 
 ```bash
-# 创建三个网站目录
-mkdir -p /data/server/nginx/web{1,2,3}
+# 创建网站根目录和三个网站子目录
+mkdir -p /data/wwwroot/web{1,2,3}
 
 # 创建首页文件
-echo "<h1>Welcome to Website 1</h1>" > /data/server/nginx/web1/index.html
-echo "<h1>Welcome to Website 2</h1>" > /data/server/nginx/web2/index.html
-echo "<h1>Welcome to Website 3</h1>" > /data/server/nginx/web3/index.html
+echo "<h1>Welcome to Website 1</h1>" > /data/wwwroot/web1/index.html
+echo "<h1>Welcome to Website 2</h1>" > /data/wwwroot/web2/index.html
+echo "<h1>Welcome to Website 3</h1>" > /data/wwwroot/web3/index.html
 
 # 添加子目录和文件
-mkdir /data/server/nginx/web1/dir1
-echo "<h1>Web1 - Directory 1</h1>" > /data/server/nginx/web1/dir1/index.html
+mkdir /data/wwwroot/web1/dir1
+echo "<h1>Web1 - Directory 1</h1>" > /data/wwwroot/web1/dir1/index.html
 
 # 查看目录结构
-tree /data/server/nginx/
-# /data/server/nginx/
+tree /data/wwwroot/
+# /data/wwwroot/
 # ├── web1
 # │   ├── dir1
 # │   │   └── index.html
@@ -251,16 +251,18 @@ tree /data/server/nginx/
 
 #### 3.2.3 配置虚拟主机
 
+**说明**：本镜像已在 Dockerfile 中自动创建 `conf.d` 目录并配置 `include` 指令。
+
+**⚠️ 重要**：需要注释掉 `nginx.conf` 中的默认 server 块，避免与自定义配置冲突。
+
 ```bash
-# 删除默认配置（如果存在）
-rm -f /data/server/nginx/conf/conf.d/default.conf
 
 # 创建基于端口的虚拟主机配置
 cat > /data/server/nginx/conf/conf.d/port-vhost.conf <<'EOF'
 # 虚拟主机 1 - 端口 80
 server {
     listen 80;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
     index index.html;
 
     location / {
@@ -271,23 +273,23 @@ server {
 # 虚拟主机 2 - 端口 81
 server {
     listen 81;
-    root /data/server/nginx/web2;
+    root /data/wwwroot/web2;
     index index.html;
 }
 
 # 虚拟主机 3 - 端口 82
 server {
     listen 82;
-    root /data/server/nginx/web3;
+    root /data/wwwroot/web3;
     index index.html;
 }
 EOF
 
 # 测试配置
-nginx -t
+/data/server/nginx/sbin/nginx -t
 
-# 启动 Nginx
-nginx
+# 启动 Nginx（使用绝对路径，避免升级时出现问题）
+/data/server/nginx/sbin/nginx
 ```
 
 #### 3.2.4 测试访问
@@ -305,10 +307,10 @@ curl http://127.0.0.1:81
 curl http://127.0.0.1:82
 # 输出：<h1>Welcome to Website 3</h1>
 
-# 在宿主机测试（通过 Docker 端口映射）
-curl http://localhost:8040  # 访问 web1
-curl http://localhost:8041  # 访问 web2
-curl http://localhost:8042  # 访问 web3
+# 在宿主机测试（通过静态 IP 直接访问）
+curl http://10.0.7.40:80  # 访问 web1
+curl http://10.0.7.40:81  # 访问 web2
+curl http://10.0.7.40:82  # 访问 web3
 ```
 
 ---
@@ -332,7 +334,7 @@ cat > /data/server/nginx/conf/conf.d/domain-vhost.conf <<'EOF'
 server {
     listen 80;
     server_name www.site1.com site1.com;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
     index index.html;
 
     access_log /data/server/nginx/logs/site1_access.log;
@@ -347,7 +349,7 @@ server {
 server {
     listen 80;
     server_name www.site2.com site2.com;
-    root /data/server/nginx/web2;
+    root /data/wwwroot/web2;
     index index.html;
 
     access_log /data/server/nginx/logs/site2_access.log;
@@ -358,7 +360,7 @@ server {
 server {
     listen 80;
     server_name www.site3.com site3.com;
-    root /data/server/nginx/web3;
+    root /data/wwwroot/web3;
     index index.html;
 
     access_log /data/server/nginx/logs/site3_access.log;
@@ -374,92 +376,126 @@ server {
 EOF
 
 # 重载配置
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 ```
 
-#### 3.3.3 配置 /etc/hosts（模拟 DNS）
+#### 3.3.3 使用 DNS 服务器（手动配置）
 
-**在容器内**：
+使用 `01.dns/03.manual-master-slave-dns` 项目提供的主从 DNS 服务器进行域名解析。
 
 ```bash
-# 添加域名解析
-cat >> /etc/hosts <<EOF
-127.0.0.1 www.site1.com site1.com
-127.0.0.1 www.site2.com site2.com
-127.0.0.1 www.site3.com site3.com
-EOF
+# 1. 启动 DNS 服务器（在另一个终端）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose up --build -d
+
+# 2. 配置主 DNS 服务器（一键配置）
+sudo docker compose exec -it dns-master bash
+
+# 推荐：长选项（参数含义明确，适合文档和教学）
+setup-dns-master.sh --domain site1.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+setup-dns-master.sh --domain site2.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+setup-dns-master.sh --domain site3.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+# 或者：位置参数（快速输入）
+# setup-dns-master.sh site1.com 10.0.7.40 10.0.0.13 10.0.0.15
+# setup-dns-master.sh site2.com 10.0.7.40 10.0.0.13 10.0.0.15
+# setup-dns-master.sh site3.com 10.0.7.40 10.0.0.13 10.0.0.15
+
+exit
+
+# 3. 配置从 DNS 服务器（一键配置）
+sudo docker compose exec -it dns-slave bash
+
+# 推荐：长选项（参数含义明确，适合文档和教学）
+setup-dns-slave.sh --domain site1.com --master-ip 10.0.0.13
+setup-dns-slave.sh --domain site2.com --master-ip 10.0.0.13
+setup-dns-slave.sh --domain site3.com --master-ip 10.0.0.13
+
+# 或者：位置参数（快速输入）
+# setup-dns-slave.sh site1.com 10.0.0.13
+# setup-dns-slave.sh site2.com 10.0.0.13
+# setup-dns-slave.sh site3.com 10.0.0.13
+
+exit
 ```
 
-**在宿主机**（可选，用于浏览器访问）：
+#### 3.3.4 测试域名访问（在 client 容器中）
+
+**⚠️ 重要**：以下所有测试均在 client 容器中完成，无需在宿主机配置 `/etc/hosts`。
 
 ```bash
-# Linux/Mac
-sudo tee -a /etc/hosts <<EOF
-127.0.0.1 www.site1.local
-127.0.0.1 www.site2.local
-127.0.0.1 www.site3.local
-EOF
-
-# Windows（以管理员身份编辑）
-# C:\Windows\System32\drivers\etc\hosts
-127.0.0.1 www.site1.local
-127.0.0.1 www.site2.local
-127.0.0.1 www.site3.local
-```
-
-#### 3.3.4 测试域名访问
-
-```bash
-# 测试 site1
-curl -H "Host: www.site1.com" http://127.0.0.1
+# 测试 site1（使用域名直接访问）
+curl http://www.site1.com
 # 输出：<h1>Welcome to Website 1</h1>
 
-# 测试 site2
-curl -H "Host: www.site2.com" http://127.0.0.1
+# 测试 site2（使用域名直接访问）
+curl http://www.site2.com
 # 输出：<h1>Welcome to Website 2</h1>
 
-# 测试 site3
-curl -H "Host: www.site3.com" http://127.0.0.1
+# 测试 site3（使用域名直接访问）
+curl http://www.site3.com
 # 输出：<h1>Welcome to Website 3</h1>
 
-# 测试默认虚拟主机（未知域名）
-curl -H "Host: www.unknown.com" http://127.0.0.1
-# 输出：（无响应，连接直接关闭）
+# 测试不带 www 的域名
+curl http://site1.com
+curl http://site2.com
+curl http://site3.com
 
-# 测试不带 Host 头
-curl http://127.0.0.1
-# 输出：（匹配 default_server，连接关闭）
+# 查看响应头
+curl -I http://www.site1.com
+# 输出：
+# HTTP/1.1 200 OK
+# Server: nginx/1.26.2
+# ...
+
+# 测试访问不存在的域名（应该被 default_server 拒绝）
+curl http://www.unknown.com
+# 输出：（连接直接关闭，无响应）
+
+# 查看访问日志（退出 client 容器后查看）
+exit
+sudo docker compose exec nginx-ubuntu-vhost bash
+tail -5 /data/server/nginx/logs/site1_access.log
+tail -5 /data/server/nginx/logs/site2_access.log
+tail -5 /data/server/nginx/logs/site3_access.log
 ```
 
 ---
 
 ### 3.4 Location 匹配规则实践
 
-#### 3.4.1 准备测试文件
+#### 3.4.1 准备测试文件（在 nginx-ubuntu-vhost 容器中）
 
 ```bash
+# 进入 Nginx 容器
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-ubuntu-vhost bash
+
 # 在 web1 目录下创建多种资源
-mkdir -p /data/server/nginx/web1/{documents,images,api}
+mkdir -p /data/wwwroot/web1/{documents,images,api}
 
 # 创建测试文件
-echo "Document Page" > /data/server/nginx/web1/documents/index.html
-echo "Image Directory" > /data/server/nginx/web1/images/index.html
-echo "API Response" > /data/server/nginx/web1/api/index.html
+echo "Document Page" > /data/wwwroot/web1/documents/index.html
+echo "Image Directory" > /data/wwwroot/web1/images/index.html
+echo "API Response" > /data/wwwroot/web1/api/index.html
 
 # 创建图片文件（模拟）
-touch /data/server/nginx/web1/images/photo.jpg
-touch /data/server/nginx/web1/images/logo.gif
-touch /data/server/nginx/web1/test.png
+touch /data/wwwroot/web1/images/photo.jpg
+touch /data/wwwroot/web1/images/logo.gif
+touch /data/wwwroot/web1/test.png
 ```
 
-#### 3.4.2 配置不同匹配规则
+#### 3.4.2 配置不同匹配规则（在 nginx-ubuntu-vhost 容器中）
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/location-test.conf <<'EOF'
 server {
     listen 80;
     server_name test.location.com;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
 
     # 规则 1：精确匹配（最高优先级）
     location = / {
@@ -499,123 +535,216 @@ server {
 EOF
 
 # 重载配置
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
+
+exit
 ```
 
-#### 3.4.3 测试匹配优先级
+#### 3.4.3 配置 DNS（添加测试域名 test.location.com）
 
 ```bash
+# 进入 DNS master 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it dns-master bash
+
+# 配置 test.location.com 域名
+setup-dns-master.sh --domain test.location.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+exit
+
+# 配置 DNS slave 同步
+sudo docker compose exec -it dns-slave bash
+
+setup-dns-slave.sh --domain test.location.com --master-ip 10.0.0.13
+
+exit
+```
+
+#### 3.4.4 测试匹配优先级（在 client 容器中）
+
+**⚠️ 重要**：所有测试在 DNS client 容器中完成，直接使用域名访问。
+
+```bash
+# 进入 client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
 # 测试 1：精确匹配 /
-curl -H "Host: test.location.com" http://127.0.0.1/
+curl http://test.location.com/
 # 输出：Rule 1: Exact match for /
 
 # 测试 2：精确匹配 /api
-curl -H "Host: test.location.com" http://127.0.0.1/api
+curl http://test.location.com/api
 # 输出：Rule 2: Exact match for /api
 
 # 测试 3：优先前缀匹配 ^~
-curl -H "Host: test.location.com" http://127.0.0.1/images/photo.jpg
+curl http://test.location.com/images/photo.jpg
 # 输出：Rule 3: Priority prefix match for /images/
 # 说明：虽然规则 4 也能匹配 .jpg，但 ^~ 优先级更高
 
 # 测试 4：正则匹配（区分大小写）
-curl -H "Host: test.location.com" http://127.0.0.1/test.png
+curl http://test.location.com/test.png
 # 输出：Rule 4: Regex match for image files
 
 # 测试 5：正则匹配（不区分大小写）
-curl -H "Host: test.location.com" http://127.0.0.1/test.PNG
+curl http://test.location.com/test.PNG
 # 输出：Rule 5: Case-insensitive regex match
 
 # 测试 6：普通前缀匹配
-curl -H "Host: test.location.com" http://127.0.0.1/documents/
+curl http://test.location.com/documents/
 # 输出：Rule 6: Prefix match for /documents/
 
 # 测试 7：兜底规则
-curl -H "Host: test.location.com" http://127.0.0.1/unknown
+curl http://test.location.com/unknown
 # 输出：Rule 7: Default match for all
+
+# 验证 DNS 解析
+nslookup test.location.com
+# 输出：
+# Server:         10.0.0.13
+# Address:        10.0.0.13#53
+#
+# Name:   test.location.com
+# Address: 10.0.7.40
 ```
 
 ---
 
 ### 3.5 Root 与 Alias 实践
 
-#### 3.5.1 Root 使用场景
+#### 3.5.1 Root 使用场景（在 nginx-ubuntu-vhost 容器中）
 
 ```bash
+# 进入 Nginx 容器
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-ubuntu-vhost bash
+
 cat > /data/server/nginx/conf/conf.d/root-test.conf <<'EOF'
 server {
     listen 80;
     server_name root.test.com;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
 
     # location 路径会拼接到 root 后面
     location /dir1/ {
-        root /data/server/nginx/web1;
+        root /data/wwwroot/web1;
         # 访问 /dir1/index.html
-        # 实际路径：/data/server/nginx/web1/dir1/index.html
+        # 实际路径：/data/wwwroot/web1/dir1/index.html
     }
 
     location /documents/ {
-        root /data/server/nginx/web1;
+        root /data/wwwroot/web1;
         # 访问 /documents/index.html
-        # 实际路径：/data/server/nginx/web1/documents/index.html
+        # 实际路径：/data/wwwroot/web1/documents/index.html
     }
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 
-# 测试 root
-curl -H "Host: root.test.com" http://127.0.0.1/dir1/index.html
-# 输出：<h1>Web1 - Directory 1</h1>
-
-curl -H "Host: root.test.com" http://127.0.0.1/documents/index.html
-# 输出：Document Page
+exit
 ```
 
-#### 3.5.2 Alias 使用场景
+#### 3.5.2 Alias 使用场景（在 nginx-ubuntu-vhost 容器中）
 
 ```bash
+# 进入 Nginx 容器
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-ubuntu-vhost bash
+
 cat > /data/server/nginx/conf/conf.d/alias-test.conf <<'EOF'
 server {
     listen 80;
     server_name alias.test.com;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
 
     # 将 /web2/ 映射到 web2 目录
     location /web2/ {
-        alias /data/server/nginx/web2/;
+        alias /data/wwwroot/web2/;
         # 访问 /web2/index.html
-        # 实际路径：/data/server/nginx/web2/index.html
+        # 实际路径：/data/wwwroot/web2/index.html
         # （注意：/web2/ 被 alias 替换了）
     }
 
     # 将 /web3/ 映射到 web3 目录
     location /web3/ {
-        alias /data/server/nginx/web3/;
+        alias /data/wwwroot/web3/;
         # 访问 /web3/index.html
-        # 实际路径：/data/server/nginx/web3/index.html
+        # 实际路径：/data/wwwroot/web3/index.html
     }
 
     # 将 /pics/ 映射到 images 目录
     location /pics/ {
-        alias /data/server/nginx/web1/images/;
+        alias /data/wwwroot/web1/images/;
         autoindex on;  # 开启目录浏览
     }
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
+
+exit
+```
+
+#### 3.5.3 配置 DNS（添加测试域名 root.test.com 和 alias.test.com）
+
+```bash
+# 进入 DNS master 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it dns-master bash
+
+# 配置 root.test.com 域名
+setup-dns-master.sh --domain root.test.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+# 配置 alias.test.com 域名
+setup-dns-master.sh --domain alias.test.com --web-ip 10.0.7.40 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+exit
+
+# 配置 DNS slave 同步
+sudo docker compose exec -it dns-slave bash
+
+setup-dns-slave.sh --domain root.test.com --master-ip 10.0.0.13
+setup-dns-slave.sh --domain alias.test.com --master-ip 10.0.0.13
+
+exit
+```
+
+#### 3.5.4 测试 Root 和 Alias（在 client 容器中）
+
+**⚠️ 重要**：所有测试在 DNS client 容器中完成，直接使用域名访问。
+
+```bash
+# 进入 client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 测试 root
+curl http://root.test.com/dir1/index.html
+# 输出：<h1>Web1 - Directory 1</h1>
+
+curl http://root.test.com/documents/index.html
+# 输出：Document Page
 
 # 测试 alias
-curl -H "Host: alias.test.com" http://127.0.0.1/web2/index.html
+curl http://alias.test.com/web2/index.html
 # 输出：<h1>Welcome to Website 2</h1>
 
-curl -H "Host: alias.test.com" http://127.0.0.1/web3/index.html
+curl http://alias.test.com/web3/index.html
 # 输出：<h1>Welcome to Website 3</h1>
 
-curl -H "Host: alias.test.com" http://127.0.0.1/pics/
+curl http://alias.test.com/pics/
 # 输出：（目录列表）
+
+# 验证 DNS 解析
+nslookup root.test.com
+nslookup alias.test.com
+# 输出：
+# Name:   root.test.com
+# Address: 10.0.7.40
 ```
 
 ---
@@ -631,20 +760,20 @@ curl -H "Host: alias.test.com" http://127.0.0.1/pics/
 exit
 
 # 进入 Rocky 容器
-docker compose exec -it nginx-rocky-vhost bash
+sudo docker compose exec -it nginx-rocky-vhost bash
 
-# 启动 Nginx（已预装）
-nginx
+# 启动 Nginx（已预装，使用绝对路径）
+/data/server/nginx/sbin/nginx
 ```
 
 #### 4.1.2 准备测试文件
 
 ```bash
-mkdir -p /data/server/nginx/{public,private,internal}
+mkdir -p /data/wwwroot/{public,private,internal}
 
-echo "<h1>Public Content</h1>" > /data/server/nginx/public/index.html
-echo "<h1>Private Content</h1>" > /data/server/nginx/private/index.html
-echo "<h1>Internal Only</h1>" > /data/server/nginx/internal/index.html
+echo "<h1>Public Content</h1>" > /data/wwwroot/public/index.html
+echo "<h1>Private Content</h1>" > /data/wwwroot/private/index.html
+echo "<h1>Internal Only</h1>" > /data/wwwroot/internal/index.html
 ```
 
 #### 4.1.3 配置访问控制
@@ -657,12 +786,12 @@ server {
 
     # 公开内容（所有人可访问）
     location /public/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
     }
 
     # 私有内容（仅允许特定 IP）
     location /private/ {
-        alias /data/server/nginx/private/;
+        alias /data/wwwroot/private/;
 
         allow 127.0.0.1;      # 允许本机
         allow 10.0.7.0/24;    # 允许 Docker 网段
@@ -671,7 +800,7 @@ server {
 
     # 内部内容（仅本机可访问）
     location /internal/ {
-        alias /data/server/nginx/internal/;
+        alias /data/wwwroot/internal/;
 
         allow 127.0.0.1;
         deny all;
@@ -679,31 +808,202 @@ server {
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 ```
 
 #### 4.1.4 测试访问控制
 
+**测试 1：在 Rocky 容器内测试（本机访问）**
+
 ```bash
-# 测试 1：公开内容（应该成功）
+# 在 Rocky 容器内（10.0.7.41）
+
+# 测试 1.1：公开内容（应该成功）
 curl http://127.0.0.1/public/
 # 输出：<h1>Public Content</h1>
 
-# 测试 2：私有内容（本机应该成功）
+# 测试 1.2：私有内容（本机应该成功）
 curl http://127.0.0.1/private/
 # 输出：<h1>Private Content</h1>
 
-# 测试 3：内部内容（本机应该成功）
+# 测试 1.3：内部内容（本机应该成功）
 curl http://127.0.0.1/internal/
 # 输出：<h1>Internal Only</h1>
+```
 
-# 在容器外测试（模拟外部访问）
-# 从宿主机执行（应该被拒绝，因为 allow 规则中没有宿主机 IP）
-curl http://localhost:8043/private/
+**测试 2：在同网段测试（10.0.7.0/24 允许访问）**
+
+```bash
+# 在宿主机或 Nginx Ubuntu 容器测试（10.0.7.0/24 网段）
+
+# 测试 2.1：公开内容（应该成功）
+curl http://10.0.7.41/public/
+# 输出：<h1>Public Content</h1>
+
+# 测试 2.2：私有内容（10.0.7.0/24 网段允许，应该成功）
+curl http://10.0.7.41/private/
+# 输出：<h1>Private Content</h1>
+
+# 测试 2.3：内部内容（仅 127.0.0.1 允许，应该被拒绝）
+sudo docker compose exec -it nginx-ubuntu-vhost bash
+curl http://10.0.7.41/internal/
 # 输出：403 Forbidden
 ```
 
----
+**测试 3：跨网段测试（验证 Docker 网络行为）**
+
+```bash
+# 进入 DNS client 容器（10.0.0.12，不在 10.0.7.0/24 网段）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 测试 3.1：公开内容（应该成功）
+curl http://10.0.7.41/public/
+# 输出：<h1>Public Content</h1>
+
+# 测试 3.2：私有内容（实际会成功，因为 Docker NAT）
+curl http://10.0.7.41/private/
+# 输出：<h1>Private Content</h1>
+# 说明：虽然 client 的真实 IP 是 10.0.0.12，但由于 Docker 跨网络 NAT，
+#       Nginx 看到的源 IP 是 10.0.7.1（Docker 网关），在白名单内
+
+# 测试 3.3：内部内容（仅 127.0.0.1 允许，应该被拒绝）
+curl http://10.0.7.41/internal/
+# 输出：403 Forbidden
+
+# 查看 Nginx 日志验证源 IP
+exit
+
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec nginx-rocky-vhost tail -5 /data/server/nginx/logs/access.log
+# 输出示例：
+# 10.0.7.1 - - [14/Oct/2025:03:04:28 +0000] "GET /public/ HTTP/1.1" 200 24 "-" "curl/7.76.1"
+# 10.0.7.1 - - [14/Oct/2025:03:04:31 +0000] "GET /private/ HTTP/1.1" 200 25 "-" "curl/7.76.1"
+# 10.0.7.1 - - [14/Oct/2025:03:04:50 +0000] "GET /internal/ HTTP/1.1" 403 153 "-" "curl/7.76.1"
+#  ↑ 注意：所有请求的源 IP 都是 10.0.7.1（Docker 网关）
+```
+
+**⚠️ Docker 网络 NAT 行为说明：**
+
+当跨 Docker 网络访问时（如从 10.0.0.0/24 访问 10.0.7.0/24），由于 Docker 的 NAT（网络地址转换）机制：
+- **客户端真实 IP**：10.0.0.12
+- **Nginx 看到的 IP**：10.0.7.1（Docker 网关）
+- **结果**：10.0.7.1 在 `10.0.7.0/24` 白名单内，所以 `/private/` 仍然可访问
+
+这是 Docker 网络的正常行为，在生产环境中可以通过以下方式获取真实客户端 IP：
+- 使用 `real_ip` 模块
+- 配置 `X-Forwarded-For` 头
+- 使用 Host 网络模式
+
+**测试结果对比：**
+
+| 访问源 | 真实 IP | Nginx 看到的 IP | /public/ | /private/ | /internal/ |
+|-------|---------|----------------|----------|-----------|-----------|
+| **Rocky 容器内** | 127.0.0.1 | 127.0.0.1 | ✅ 200 OK | ✅ 200 OK | ✅ 200 OK |
+| **同网段（10.0.7.0/24）** | 10.0.7.x | 10.0.7.x | ✅ 200 OK | ✅ 200 OK | ❌ 403 Forbidden |
+| **跨网段（Docker NAT）** | 10.0.0.12 | 10.0.7.1（网关） | ✅ 200 OK | ✅ 200 OK | ❌ 403 Forbidden |
+
+**说明：**
+- `/public/`：所有人可访问
+- `/private/`：仅允许 127.0.0.1 和 10.0.7.0/24 网段
+- `/internal/`：仅允许 127.0.0.1（本机）
+
+  - 配置 `X-Forwarded-For` 头
+
+#### 4.1.5 配置跨网络测试环境（防止 Docker NAT）
+
+**问题背景**：
+
+默认情况下，Docker 容器跨网络访问时会进行源地址转换（SNAT/MASQUERADE），导致：
+- 客户端真实 IP：10.0.0.12
+- Nginx 看到的 IP：10.0.7.1（网关 IP）
+
+这使得无法真正测试基于源 IP 的访问控制。
+
+**解决方案**：
+
+通过配置 iptables 规则，让特定网段之间的流量不进行源地址转换。
+
+##### 步骤 1：在宿主机查看当前 iptables 规则
+
+```bash
+# 查看 POSTROUTING 链的 NAT 规则
+sudo iptables -t nat -L POSTROUTING -n -v --line-numbers
+
+# 输出示例（修复前）：
+# Chain POSTROUTING (policy ACCEPT)
+# num   pkts bytes target     prot opt in     out     source               destination
+# 1        0     0 MASQUERADE  all  --  *      !br-81794e30740f  10.0.0.0/24  0.0.0.0/0
+# 2        0     0 MASQUERADE  all  --  *      !br-b5823ba104e0  10.0.7.0/24  0.0.0.0/0
+```
+
+**说明**：
+- 第 1 条规则：10.0.0.0/24 网段访问外部网络时，进行 MASQUERADE（源地址转换）
+- 第 2 条规则：10.0.7.0/24 网段访问外部网络时，进行 MASQUERADE（源地址转换）
+- **问题**：当 10.0.0.12 访问 10.0.7.41 时，会被第 1 条规则匹配，源 IP 被转换为 10.0.7.1
+
+##### 步骤 2：添加 RETURN 规则（防止特定网段间的 NAT）
+
+```bash
+# 在 MASQUERADE 规则之前插入 RETURN 规则
+sudo iptables -t nat -I POSTROUTING -s 10.0.0.0/24 -d 10.0.7.0/24 -j RETURN
+sudo iptables -t raw -F
+# 验证规则已添加
+sudo iptables -t nat -L POSTROUTING -n -v --line-numbers
+
+# 输出示例（修复后）：
+# Chain POSTROUTING (policy ACCEPT)
+# num   pkts bytes target     prot opt in     out     source               destination
+# 1        0     0 RETURN     all  --  *      *       10.0.0.0/24          10.0.7.0/24
+# 2        0     0 MASQUERADE  all  --  *      !br-81794e30740f  10.0.0.0/24  0.0.0.0/0
+# 3        0     0 MASQUERADE  all  --  *      !br-b5823ba104e0  10.0.7.0/24  0.0.0.0/0
+```
+
+**规则解释**：
+- **RETURN 规则**：当源 IP 为 10.0.0.0/24，目的 IP 为 10.0.7.0/24 时，直接返回，不继续匹配后面的 MASQUERADE 规则
+- **结果**：10.0.0.12 访问 10.0.7.41 时，源 IP 保持为 10.0.0.12，不会被转换为 10.0.7.1
+
+ 
+
+**从 DNS client 容器测试（10.0.0.12）：**
+
+```bash
+# 进入 DNS client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 测试访问 /private/（现在应该被拒绝）
+curl http://10.0.7.41/private/
+# 输出：403 Forbidden
+# 说明：Nginx 看到的源 IP 是 10.0.0.12（保留了真实 IP），不在 10.0.7.0/24 白名单内
+
+# 测试访问 /public/（应该成功）
+curl http://10.0.7.41/public/
+# 输出：<h1>Public Content</h1>
+
+exit
+```
+
+**查看 Nginx 日志验证源 IP：**
+
+```bash
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec nginx-rocky-vhost tail -5 /data/server/nginx/logs/access.log
+
+# 输出示例：
+# 10.0.0.12 - - [14/Oct/2025:10:30:15 +0000] "GET /public/ HTTP/1.1" 200 24 "-" "curl/7.76.1"
+# 10.0.0.12 - - [14/Oct/2025:10:30:20 +0000] "GET /private/ HTTP/1.1" 403 153 "-" "curl/7.76.1"
+#  ↑ 注意：源 IP 现在是 10.0.0.12（真实客户端 IP），不再是 10.0.7.1（网关 IP）
+```
+
+##### 步骤 4：测试结果对比
+
+| 配置状态 | 访问源 | 真实 IP | Nginx 看到的 IP | /private/ 结果 |
+|---------|-------|---------|----------------|---------------|
+| **修复前（默认 NAT）** | client (10.0.0.12) | 10.0.0.12 | 10.0.7.1 (网关) | ✅ 200 OK（网关在白名单内） |
+| **修复后（添加 RETURN）** | client (10.0.0.12) | 10.0.0.12 | 10.0.0.12 (真实 IP) | ❌ 403 Forbidden（不在白名单内） |
+ 
+  
 
 ### 4.2 HTTP 基本认证
 
@@ -740,6 +1040,7 @@ cat /data/server/nginx/conf/.htpasswd
 
 # 设置文件权限
 chmod 600 /data/server/nginx/conf/.htpasswd
+chown nginx:nginx /data/server/nginx/conf/.htpasswd
 ```
 
 #### 4.2.3 配置身份认证
@@ -752,12 +1053,12 @@ server {
 
     # 公开区域（无需认证）
     location /public/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
     }
 
     # 管理后台（需要认证）
     location /admin/ {
-        alias /data/server/nginx/private/;
+        alias /data/wwwroot/private/;
 
         auth_basic "Admin Area - Please Login";
         auth_basic_user_file /data/server/nginx/conf/.htpasswd;
@@ -765,7 +1066,7 @@ server {
 
     # 结合 IP 白名单和身份认证
     location /secure/ {
-        alias /data/server/nginx/internal/;
+        alias /data/wwwroot/internal/;
 
         # 先验证 IP
         allow 127.0.0.1;
@@ -782,35 +1083,37 @@ server {
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 ```
 
 #### 4.2.4 测试身份认证
 
 ```bash
+# 在 Rocky 容器内测试（本机测试，需要添加 Host 头）
+
 # 测试 1：公开区域（无需认证）
-curl http://127.0.0.1/public/
+curl -H "Host: auth.test.com" http://127.0.0.1/public/
 # 输出：<h1>Public Content</h1>
 
 # 测试 2：管理后台（未提供认证，应该 401）
-curl -I http://127.0.0.1/admin/
+curl -I -H "Host: auth.test.com" http://127.0.0.1/admin/
 # 输出：HTTP/1.1 401 Unauthorized
 #      WWW-Authenticate: Basic realm="Admin Area - Please Login"
 
 # 测试 3：管理后台（提供正确认证）
-curl -u admin:admin123 http://127.0.0.1/admin/
+curl -u admin:admin123 -H "Host: auth.test.com" http://127.0.0.1/admin/
 # 输出：<h1>Private Content</h1>
 
 # 测试 4：管理后台（错误密码）
-curl -u admin:wrongpass http://127.0.0.1/admin/
+curl -u admin:wrongpass -H "Host: auth.test.com" http://127.0.0.1/admin/
 # 输出：401 Unauthorized
 
 # 测试 5：URL 中嵌入认证信息
-curl http://admin:admin123@127.0.0.1/admin/
+curl -H "Host: auth.test.com" http://admin:admin123@127.0.0.1/admin/
 # 输出：<h1>Private Content</h1>
 
 # 测试 6：安全区域（需要 IP + 认证）
-curl -u admin:admin123 http://127.0.0.1/secure/
+curl -u admin:admin123 -H "Host: auth.test.com" http://127.0.0.1/secure/
 # 输出：<h1>Internal Only</h1>
 ```
 
@@ -873,19 +1176,19 @@ server {
 
     # 位置 1：使用基本格式
     location /api/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
         access_log /data/server/nginx/logs/api_access.log basic;
     }
 
     # 位置 2：使用 JSON 格式
     location /json/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
         access_log /data/server/nginx/logs/json_access.log json;
     }
 
     # 位置 3：性能监控
     location /monitor/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
         access_log /data/server/nginx/logs/performance.log performance;
     }
 
@@ -897,7 +1200,7 @@ server {
 
     # 位置 5：条件日志（仅记录 4xx/5xx 错误）
     location /errors/ {
-        alias /data/server/nginx/public/;
+        alias /data/wwwroot/public/;
         access_log /data/server/nginx/logs/error_only.log detailed if=$loggable;
     }
 }
@@ -909,45 +1212,125 @@ map $status $loggable {
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
+
+exit
 ```
 
-#### 5.1.3 测试日志记录
+#### 5.1.3 配置 DNS（添加测试域名 log.test.com）
 
 ```bash
-# 生成测试请求
-curl -H "Host: log.test.com" http://127.0.0.1/api/
-curl -H "Host: log.test.com" http://127.0.0.1/json/
-curl -H "Host: log.test.com" http://127.0.0.1/monitor/
-curl -H "Host: log.test.com" http://127.0.0.1/health
-curl -H "Host: log.test.com" http://127.0.0.1/not-found  # 404 错误
+# 进入 DNS master 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it dns-master bash
+
+# 配置 log.test.com 域名（指向 Rocky 容器）
+setup-dns-master.sh --domain log.test.com --web-ip 10.0.7.41 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+exit
+
+# 配置 DNS slave 同步
+sudo docker compose exec -it dns-slave bash
+
+setup-dns-slave.sh --domain log.test.com --master-ip 10.0.0.13
+
+exit
+```
+
+#### 5.1.4 测试日志记录（在 client 容器中）
+
+**⚠️ 重要**：所有测试在 DNS client 容器中完成，直接使用域名访问。
+
+```bash
+# 进入 DNS client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 生成测试请求（使用域名直接访问）
+curl http://log.test.com/api/
+curl http://log.test.com/json/
+curl http://log.test.com/monitor/
+curl http://log.test.com/health
+
+# 测试条件日志（/errors/ 仅记录 4xx/5xx 错误）
+curl http://log.test.com/errors/            # 200 成功，不应记录
+curl http://log.test.com/errors/not-exist   # 404 错误，应该记录
+
+# 验证 DNS 解析
+nslookup log.test.com
+# 输出：
+# Server:         10.0.0.13
+# Address:        10.0.0.13#53
+#
+# Name:   log.test.com
+# Address: 10.0.7.41
+
+exit
+```
+
+**查看日志（退出 client 容器，进入 Rocky 容器）：**
+
+```bash
+# 进入 Rocky 容器查看日志
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-rocky-vhost bash
 
 # 查看基本格式日志
 tail -1 /data/server/nginx/logs/api_access.log
-# 输出：10.0.7.1 [12/Oct/2025:10:30:15 +0800] "GET /api/ HTTP/1.1" 200 25 "curl/7.68.0"
+# 输出：10.0.0.12 [12/Oct/2025:10:30:15 +0000] "GET /api/ HTTP/1.1" 200 25 "curl/7.76.1"
 
-# 查看 JSON 格式日志
+# 查看 JSON 格式日志（需要先安装 jq）
+yum install -y jq
 tail -1 /data/server/nginx/logs/json_access.log | jq .
 # 输出：
 # {
-#   "timestamp": "2025-10-12T10:30:20+08:00",
-#   "client_ip": "10.0.7.1",
+#   "timestamp": "2025-10-12T10:30:20+00:00",
+#   "client_ip": "10.0.0.12",
 #   "request": "GET /json/ HTTP/1.1",
 #   "status": 200,
 #   "bytes_sent": 25,
 #   "request_time": 0.001,
-#   "user_agent": "curl/7.68.0",
+#   "user_agent": "curl/7.76.1",
 #   "referer": "",
 #   "host": "log.test.com"
 # }
 
 # 查看性能日志
 tail -1 /data/server/nginx/logs/performance.log
-# 输出：10.0.7.1 - 0.001 - - [12/Oct/2025:10:30:25 +0800] "GET /monitor/ HTTP/1.1" 200 25
+# 输出：10.0.0.12 - 0.001 - - [12/Oct/2025:10:30:25 +0000] "GET /monitor/ HTTP/1.1" 200 25
 
 # 验证健康检查不记录日志
 grep health /data/server/nginx/logs/*.log
 # 输出：（无结果）
+
+# 查看条件日志（仅记录 4xx/5xx 错误）
+tail -5 /data/server/nginx/logs/error_only.log
+# 输出示例：
+# 10.0.0.12 - - [12/Oct/2025:10:30:38 +0000] "GET /errors/not-exist HTTP/1.1" 404 153 "-" "curl/7.76.1" 0.000 -
+#  ↑ 注意：只记录了 404 错误请求，200 成功请求（/errors/）没有被记录
+
+# 验证 200 成功请求确实没有被记录到 error_only.log
+grep "GET /errors/ " /data/server/nginx/logs/error_only.log
+# 输出：（无结果，说明 200 请求没有被记录）
+
+# 但可以在详细日志中看到所有请求
+grep "GET /errors/" /data/server/nginx/logs/detailed_access.log
+# 输出示例：
+# 10.0.0.12 - - [12/Oct/2025:10:30:35 +0000] "GET /errors/ HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:38 +0000] "GET /errors/not-exist HTTP/1.1" 404 153 "-" "curl/7.76.1" 0.000 -
+
+# 查看详细访问日志（包含所有请求）
+tail -10 /data/server/nginx/logs/detailed_access.log
+# 输出示例：
+# 10.0.0.12 - - [12/Oct/2025:10:30:15 +0000] "GET /api/ HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:20 +0000] "GET /json/ HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.001 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:25 +0000] "GET /monitor/ HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.001 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:28 +0000] "GET /health HTTP/1.1" 200 3 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:35 +0000] "GET /errors/ HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - - [12/Oct/2025:10:30:38 +0000] "GET /errors/not-exist HTTP/1.1" 404 153 "-" "curl/7.76.1" 0.000 -
+
+exit
 ```
 
 ---
@@ -1024,23 +1407,65 @@ server {
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 ```
 
-#### 6.1.2 访问状态页
+#### 6.1.2 配置 DNS（添加测试域名 status.test.com）
 
 ```bash
-# 访问状态页
-curl -H "Host: status.test.com" http://127.0.0.1/nginx-status
+# 进入 DNS master 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it dns-master bash
+
+# 配置 status.test.com 域名（指向 Rocky 容器）
+setup-dns-master.sh --domain status.test.com --web-ip 10.0.7.41 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+exit
+
+# 配置 DNS slave 同步
+sudo docker compose exec -it dns-slave bash
+
+setup-dns-slave.sh --domain status.test.com --master-ip 10.0.0.13
+
+exit
+```
+
+#### 6.1.3 访问状态页（在 client 容器中）
+
+**⚠️ 重要**：所有测试在 DNS client 容器中完成，直接使用域名访问。
+
+```bash
+# 进入 DNS client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 访问状态页（使用域名直接访问）
+curl http://status.test.com/nginx-status
 
 # 输出：
 # Active connections: 1
 # server accepts handled requests
 #  125 125 320
 # Reading: 0 Writing: 1 Waiting: 0
+
+# 测试健康检查端点
+curl http://status.test.com/health
+# 输出：healthy
+
+# 验证 DNS 解析
+nslookup status.test.com
+# 输出：
+# Server:         10.0.0.13
+# Address:        10.0.0.13#53
+#
+# Name:   status.test.com
+# Address: 10.0.7.41
+
+exit
 ```
 
-#### 6.1.3 状态指标解读
+#### 6.1.4 状态指标解读
 
 | 指标 | 说明 | 正常值 |
 |------|------|--------|
@@ -1052,16 +1477,22 @@ curl -H "Host: status.test.com" http://127.0.0.1/nginx-status
 | **Writing** | 正在发送响应的连接数 | 中等值 |
 | **Waiting** | 空闲 keepalive 连接数 | 较大值 |
 
-#### 6.1.4 监控脚本
+#### 6.1.5 监控脚本（在 Rocky 容器中）
+
+**说明**：监控脚本在 Rocky 容器内运行，本地访问状态页。
 
 ```bash
+# 进入 Rocky 容器
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-rocky-vhost bash
+
 # 创建监控脚本
 cat > /usr/local/bin/nginx-monitor.sh <<'EOF'
 #!/bin/bash
 
 while true; do
     echo "=== Nginx Status at $(date) ==="
-    curl -s http://127.0.0.1/nginx-status | grep -v "^$"
+    curl -s -H "Host: status.test.com" http://127.0.0.1/nginx-status | grep -v "^$"
     echo ""
     sleep 5
 done
@@ -1069,7 +1500,7 @@ EOF
 
 chmod +x /usr/local/bin/nginx-monitor.sh
 
-# 运行监控
+# 运行监控（按 Ctrl+C 停止）
 /usr/local/bin/nginx-monitor.sh
 ```
 
@@ -1091,24 +1522,28 @@ chmod +x /usr/local/bin/nginx-monitor.sh
 
 ```bash
 # 准备目录
-mkdir -p /data/www/{website,blog,api,admin}
+mkdir -p /data/wwwroot/{website,blog,api,admin}
 
 # 创建测试文件
-echo "<h1>Company Website</h1>" > /data/www/website/index.html
-echo "<h1>Company Blog</h1>" > /data/www/blog/index.html
-echo '{"status":"ok"}' > /data/www/api/index.json
-echo "<h1>Admin Dashboard</h1>" > /data/www/admin/index.html
+echo "<h1>Company Website</h1>" > /data/wwwroot/website/index.html
+echo "<h1>Company Blog</h1>" > /data/wwwroot/blog/index.html
+echo '{"status":"ok"}' > /data/wwwroot/api/index.json
+echo "<h1>Admin Dashboard</h1>" > /data/wwwroot/admin/index.html
 
 # 创建认证文件
 htpasswd -bc /data/server/nginx/conf/.admin-passwd admin admin@2025
 
-# 配置虚拟主机
+# 步骤 1：在 nginx.conf 的 http 块中添加限流配置
+# 编辑 nginx.conf，在 http 块中添加（在 http 块的最后，关闭 } 之前）
+sed -i '/^http {/a \    # API 限流配置（必须在 http 块中）\n    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;' /data/server/nginx/conf/nginx.conf
+
+# 步骤 2：配置虚拟主机
 cat > /data/server/nginx/conf/conf.d/enterprise.conf <<'EOF'
 # 官网
 server {
     listen 80;
     server_name www.company.com company.com;
-    root /data/www/website;
+    root /data/wwwroot/website;
     index index.html;
 
     access_log /data/server/nginx/logs/website_access.log detailed;
@@ -1129,7 +1564,7 @@ server {
 server {
     listen 80;
     server_name blog.company.com;
-    root /data/www/blog;
+    root /data/wwwroot/blog;
     index index.html;
 
     access_log /data/server/nginx/logs/blog_access.log detailed;
@@ -1143,14 +1578,12 @@ server {
 server {
     listen 80;
     server_name api.company.com;
-    root /data/www/api;
+    root /data/wwwroot/api;
 
     access_log /data/server/nginx/logs/api_access.log json;
 
-    # API 限流
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-
     location / {
+        # 使用在 http 块中定义的限流 zone
         limit_req zone=api_limit burst=20 nodelay;
 
         default_type application/json;
@@ -1163,7 +1596,7 @@ server {
 server {
     listen 80;
     server_name admin.company.com;
-    root /data/www/admin;
+    root /data/wwwroot/admin;
     index index.html;
 
     access_log /data/server/nginx/logs/admin_access.log detailed;
@@ -1187,31 +1620,184 @@ server {
 }
 EOF
 
-nginx -s reload
+/data/server/nginx/sbin/nginx -s reload
 ```
 
-#### 7.1.3 测试企业配置
+#### 7.1.3 配置 DNS（添加测试域名）
+
+**说明**：为企业域名配置 DNS 解析，使用 DNS 服务器进行域名解析测试。
 
 ```bash
-# 测试官网
-curl -H "Host: www.company.com" http://127.0.0.1
+# 退出 Rocky 容器
+exit
+
+# 进入 DNS master 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it dns-master bash
+
+# 配置所有 company.com 域名（指向 Rocky 容器 10.0.7.41）
+# 推荐：使用长选项（参数含义明确）
+setup-dns-master.sh --domain company.com --web-ip 10.0.7.41 \
+                    --master-ip 10.0.0.13 --slave-ip 10.0.0.15
+
+# 或者：位置参数（快速输入）
+# setup-dns-master.sh company.com 10.0.7.41 10.0.0.13 10.0.0.15
+
+exit
+
+# 配置 DNS slave 同步
+sudo docker compose exec -it dns-slave bash
+
+# 推荐：使用长选项
+setup-dns-slave.sh --domain company.com --master-ip 10.0.0.13
+
+# 或者：位置参数
+# setup-dns-slave.sh company.com 10.0.0.13
+
+exit
+```
+
+**⚠️ 说明**：
+- 配置一次 `company.com` 即可，DNS 服务器会自动解析所有子域名：
+  - `www.company.com` → 10.0.7.41
+  - `blog.company.com` → 10.0.7.41
+  - `api.company.com` → 10.0.7.41
+  - `admin.company.com` → 10.0.7.41
+- 所有子域名都指向同一个 IP（10.0.7.41），Nginx 通过 `server_name` 区分不同站点
+
+---
+
+#### 7.1.4 测试企业配置（在 client 容器中）
+
+**⚠️ 重要**：所有测试在 DNS client 容器中完成，直接使用域名访问。
+
+```bash
+# 进入 DNS client 容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+sudo docker compose exec -it client bash
+
+# 验证 DNS 解析（所有子域名都应该解析到 10.0.7.41）
+nslookup www.company.com
+nslookup blog.company.com
+nslookup api.company.com
+nslookup admin.company.com
+# 输出示例：
+# Server:         10.0.0.13
+# Address:        10.0.0.13#53
+#
+# Name:   www.company.com
+# Address: 10.0.7.41
+
+# 测试官网（使用域名直接访问）
+curl http://www.company.com
+# 输出：<h1>Company Website</h1>
+
+# 测试不带 www 的官网
+curl http://company.com
 # 输出：<h1>Company Website</h1>
 
 # 测试博客
-curl -H "Host: blog.company.com" http://127.0.0.1
+curl http://blog.company.com
 # 输出：<h1>Company Blog</h1>
 
 # 测试 API
-curl -H "Host: api.company.com" http://127.0.0.1/index.json
+curl http://api.company.com/index.json
 # 输出：{"status":"ok"}
 
-# 测试管理后台（需要认证）
-curl -u admin:admin@2025 -H "Host: admin.company.com" http://127.0.0.1
+# 测试 API 限流（快速发送多个请求）
+for i in {1..25}; do
+    curl -s http://api.company.com/index.json
+    echo " - Request $i"
+done
+# 输出示例：
+# {"status":"ok"} - Request 1
+# ...
+# {"status":"ok"} - Request 20
+# <html>503 Service Temporarily Unavailable</html> - Request 21
+#  ↑ 超过限流阈值（rate=10r/s, burst=20）后被拒绝
+
+# 测试管理后台（未认证，应该 401）
+curl -I http://admin.company.com
+# 输出：
+# HTTP/1.1 401 Unauthorized
+# WWW-Authenticate: Basic realm="Admin Login Required"
+
+# 测试管理后台（提供正确认证）
+curl -u admin:admin@2025 http://admin.company.com
 # 输出：<h1>Admin Dashboard</h1>
 
-# 测试管理后台状态页
-curl -u admin:admin@2025 -H "Host: admin.company.com" http://127.0.0.1/status
-# 输出：Active connections: 1 ...
+# 测试管理后台状态页（需要认证）
+curl -u admin:admin@2025 http://admin.company.com/status
+# 输出：
+# Active connections: 2
+# server accepts handled requests
+#  150 150 380
+# Reading: 0 Writing: 1 Waiting: 1
+
+# 测试错误密码
+curl -u admin:wrongpass http://admin.company.com
+# 输出：401 Unauthorized
+
+exit
+```
+
+**测试结果总结**：
+
+| 域名 | 认证 | 限流 | 预期结果 |
+|------|------|------|---------|
+| **www.company.com** | 无需 | 无 | ✅ 200 OK（官网首页） |
+| **blog.company.com** | 无需 | 无 | ✅ 200 OK（博客首页） |
+| **api.company.com** | 无需 | 10r/s + burst 20 | ✅ 正常请求通过，超限 503 |
+| **admin.company.com** | 需要（admin:admin@2025） | 无 | ✅ 未认证 401，认证后 200 OK |
+| **admin.company.com/status** | 需要 | 无 | ✅ 显示 Nginx 状态信息 |
+
+**查看访问日志（退出 client 容器，进入 Rocky 容器）**：
+
+```bash
+# 进入 Rocky 容器查看日志
+cd /home/www/docker-man/07.nginx/04.manual-vhost
+sudo docker compose exec -it nginx-rocky-vhost bash
+
+# 查看官网访问日志
+tail -5 /data/server/nginx/logs/website_access.log
+# 输出示例：
+# 10.0.0.12 - - [14/Oct/2025:12:00:15 +0000] "GET / HTTP/1.1" 200 26 "-" "curl/7.76.1" 0.000 -
+
+# 查看博客访问日志
+tail -5 /data/server/nginx/logs/blog_access.log
+# 输出示例：
+# 10.0.0.12 - - [14/Oct/2025:12:00:20 +0000] "GET / HTTP/1.1" 200 23 "-" "curl/7.76.1" 0.000 -
+
+# 查看 API 访问日志（JSON 格式）
+yum install -y jq
+tail -5 /data/server/nginx/logs/api_access.log | jq .
+# 输出示例：
+# {
+#   "timestamp": "2025-10-14T12:00:25+00:00",
+#   "client_ip": "10.0.0.12",
+#   "request": "GET /index.json HTTP/1.1",
+#   "status": 200,
+#   "bytes_sent": 16,
+#   "request_time": 0.001,
+#   "user_agent": "curl/7.76.1",
+#   "referer": "",
+#   "host": "api.company.com"
+# }
+
+# 查看管理后台访问日志
+tail -5 /data/server/nginx/logs/admin_access.log
+# 输出示例：
+# 10.0.0.12 - - [14/Oct/2025:12:00:30 +0000] "GET / HTTP/1.1" 401 195 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - admin [14/Oct/2025:12:00:35 +0000] "GET / HTTP/1.1" 200 25 "-" "curl/7.76.1" 0.000 -
+# 10.0.0.12 - admin [14/Oct/2025:12:00:40 +0000] "GET /status HTTP/1.1" 200 97 "-" "curl/7.76.1" 0.000 -
+#  ↑ 注意：认证成功后，日志中显示用户名 "admin"
+
+# 查看错误日志（如果有限流拒绝）
+tail -10 /data/server/nginx/logs/website_error.log
+# 可能的输出：
+# 2025/10/14 12:00:28 [error] 123#0: *456 limiting requests, excess: 20.500 by zone "api_limit", client: 10.0.0.12, server: api.company.com, request: "GET /index.json HTTP/1.1", host: "api.company.com"
+
+exit
 ```
 
 ---
@@ -1235,7 +1821,7 @@ curl http://127.0.0.1/test.html
 ls -l /data/server/nginx/web1/test.html
 
 # 2. 检查 root 或 alias 配置
-nginx -T | grep -A 5 "location /"
+/data/server/nginx/sbin/nginx -T | grep -A 5 "location /"
 
 # 3. 检查文件权限
 ls -l /data/server/nginx/web1/
@@ -1266,18 +1852,18 @@ curl http://127.0.0.1/test.html
 
 ```bash
 # 检查权限
-ls -l /data/server/nginx/web1/test.html
+ls -l /data/wwwroot/web1/test.html
 
 # 解决：
-chmod 644 /data/server/nginx/web1/test.html
-chmod 755 /data/server/nginx/web1
+chmod 644 /data/wwwroot/web1/test.html
+chmod 755 /data/wwwroot/web1
 ```
 
 **原因 2：deny 规则拒绝**
 
 ```bash
 # 检查配置
-nginx -T | grep -A 10 "location"
+/data/server/nginx/sbin/nginx -T | grep -A 10 "location"
 
 # 解决：调整 allow/deny 顺序
 location / {
@@ -1309,7 +1895,7 @@ curl -H "Host: www.site1.com" http://127.0.0.1
 
 ```bash
 # 检查配置
-nginx -T | grep -B 5 "server_name"
+/data/server/nginx/sbin/nginx -T | grep -B 5 "server_name"
 
 # 解决：明确指定 default_server
 server {
@@ -1618,13 +2204,13 @@ access_log /data/server/nginx/logs/access.log combined if=$loggable;
 
 ```bash
 # 1. 停止所有容器
-docker compose down
+sudo docker compose down
 
 # 2. 删除 Volume（可选）
-docker compose down --volumes
+sudo docker compose down --volumes
 
 # 3. 完全清理（包括镜像）
-docker compose down --volumes --rmi all
+sudo docker compose down --volumes --rmi all
 ```
 
 ---
