@@ -1,4 +1,4 @@
-# Docker Compose Nginx 高级功能实践指南
+# sudo docker compose Nginx 高级功能实践指南
 
 ## 📚 第一部分：基础知识
 
@@ -41,13 +41,13 @@ Docker Bridge 网络：nginx-net (10.0.7.0/24)
 cd /home/www/docker-man/07.nginx/05.manual-advanced
 
 # 2. 启动服务
-docker compose up -d
+sudo docker compose up -d
 
 # 3. 检查服务状态
-docker compose ps
+sudo docker compose ps
 
 # 4. 进入容器
-docker compose exec -it nginx-ubuntu-advanced bash
+sudo docker compose exec -it nginx-ubuntu-advanced bash
 ```
 
 ---
@@ -79,12 +79,13 @@ docker compose exec -it nginx-ubuntu-advanced bash
 | **$server_port** | Server 端口 | 80 |
 | **$document_uri** | 当前 URI（同 $uri） | /vars |
 | **$proxy_add_x_forwarded_for** | X-Forwarded-For 头（追加客户端 IP） | 192.168.1.100, 10.0.7.60 |
+| **$binary_** | 状态记录 | 限制请求数/连接数使用 |
 
 #### 3.1.2 变量实践
 
 ```bash
 # 创建测试目录
-mkdir -p /data/server/nginx/web1
+mkdir -p /data/wwwroot/web1
 
 # 配置变量测试
 cat > /data/server/nginx/conf/conf.d/vars-test.conf <<'EOF'
@@ -103,7 +104,7 @@ Args: $args
 Request Method: $request_method
 
 === Client Information ===
-Client IP: $remote_addr
+Client IP: $remote_addr 
 Host: $host
 User-Agent: $http_user_agent
 Referer: $http_referer
@@ -112,6 +113,8 @@ Cookie username: $cookie_username
 
 === Server Information ===
 Server Name: $server_name
+Server Addr: $server_addr
+Upstream Addr: $upstream_addr 
 Server Port: $server_port
 Scheme: $scheme
 
@@ -163,6 +166,7 @@ curl -H "Referer: http://google.com/search" \
 cat > /data/server/nginx/conf/conf.d/custom-vars.conf <<'EOF'
 server {
     listen 80;
+    server_name vars.upload.com;
 
     # 定义自定义变量
     set $api_version "v1";
@@ -188,8 +192,13 @@ EOF
 # 重载 Nginx 配置
 nginx -s reload
 
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
+
 # 测试
-curl http://127.0.0.1/set-test
+curl http://vars.upload.com/set-test
 ```
 
 #### 3.2.2 条件赋值（map 指令）
@@ -212,6 +221,7 @@ map $http_user_agent $mobile_request {
 
 server {
     listen 80;
+    server_name map.upload.com;
 
     location /map-test {
         return 200 "
@@ -227,13 +237,13 @@ EOF
 nginx -s reload
 
 # 测试
-curl http://127.0.0.1/map-test
+curl http://map.upload.com/map-test
 # Is POST: 0
 
-curl -X POST http://127.0.0.1/map-test
+curl -X POST http://map.upload.com/map-test
 # Is POST: 1
 
-curl -A "Mobile Safari/537.36" http://127.0.0.1/map-test
+curl -A "Mobile Safari/537.36" http://map.upload.com/map-test
 # Is Mobile: 1
 ```
 
@@ -276,7 +286,8 @@ curl -A "Mobile Safari/537.36" http://127.0.0.1/map-test
 cat > /data/server/nginx/conf/conf.d/keepalive.conf <<'EOF'
 server {
     listen 80;
-    root /data/server/nginx/web1;
+    server_name www.keepalive.com;
+    root /data/wwwroot/web1;
 
     # 长连接超时时间（双参数用法）
     # 第一个值：服务器端真实超时时长（60秒）
@@ -284,7 +295,7 @@ server {
     keepalive_timeout 60s 30s;
 
     # 单个连接最多处理的请求数（默认 1000）
-    keepalive_requests 100;
+    keepalive_requests 1000;
 
     location / {
         return 200 "Keep-Alive Test\n";
@@ -295,53 +306,36 @@ EOF
 # 重载 Nginx 配置
 nginx -s reload
 
-# 测试响应头
-curl -I http://127.0.0.1
 
-# 输出：
-# HTTP/1.1 200 OK
-# Connection: keep-alive
-# Keep-Alive: timeout=30  ← 显示第二个参数的值
+# 配置dns
+ cd docker-man/01.dns/03.manual-master-slave-dns/
+dc up -d
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh keepalive.com 10.0.7.50 10.0.0.13 10.0.0.15
+dc exec -it dns-slave  /usr/local/bin/setup-dns-slave.sh keepalive.com 10.0.0.13
+
+# 跨网段可以通信；
+sudo iptables -F -t raw; sudo iptables -F DOCKER ; sudo iptables -F  DOCKER-ISOLATION-STAGE-2; sudo iptables -P FORWARD ACCEPT
+ 
+# 跨网段不转换IP
+sudo iptables -t nat -I POSTROUTING -s 10.0.0.0/24 -d 10.0.7.0/24 -j RETURN
+
+
+www@slc:~/docker-man/01.dns/03.manual-master-slave-dns$ dc exec -it client curl www.keepalive.com -I
+WARN[0000] /home/www/docker-man/01.dns/03.manual-master-slave-dns/compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion 
+HTTP/1.1 200 OK
+Server: nginx/1.24.0
+Date: Wed, 15 Oct 2025 06:44:52 GMT
+Content-Type: application/octet-stream
+Content-Length: 16
+Connection: keep-alive  <- 长连接已启用
+Keep-Alive: timeout=30  ← 显示第二个参数的值
+
+
+ 
 ```
 
-#### 4.2.2 测试长连接
 
-**方法 1：使用 telnet**
-
-```bash
-# 安装 telnet
-apt install -y telnet
-
-# 连接测试
-telnet 127.0.0.1 80
-
-# 输入以下内容（手动输入）：
-GET / HTTP/1.1
-Host: 127.0.0.1
-  # 这里按两次回车
-
-# 查看响应，注意 Connection: keep-alive
-
-# 在同一连接中继续请求（60 秒内）：
-GET / HTTP/1.1
-Host: 127.0.0.1
-  # 再次按两次回车
-
-# 可以持续请求，直到超时或达到 keepalive_requests 限制
-```
-
-**方法 2：使用 curl 查看响应头**
-
-```bash
-# 查看响应头
-curl -I http://127.0.0.1
-
-# 输出：
-# HTTP/1.1 200 OK
-# Server: nginx/1.24.0
-# Connection: keep-alive  ← 长连接已启用
-# Keep-Alive: timeout=60  ← 超时时间（如果配置了第二个参数）
-```
+ 
 
 ### 4.3 限制长连接请求数
 
@@ -349,84 +343,59 @@ curl -I http://127.0.0.1
 cat > /data/server/nginx/conf/conf.d/keepalive-limit.conf <<'EOF'
 server {
     listen 80;
+    server_name www.keepalive.com;
+    root /data/wwwroot/web1;
 
-    keepalive_timeout 60s;
-    keepalive_requests 3;  # 限制为 3 个请求
+    # 长连接超时时间（双参数用法）
+    # 第一个值：服务器端真实超时时长（60秒）
+    # 第二个值：响应头中显示给客户端（30秒）
+    keepalive_timeout 60s 30s;
+
+    # 单个连接最多处理的请求数（默认 1000）
+    keepalive_requests 3;
 
     location / {
-        return 200 "Request processed\n";
+        return 200 "Keep-Alive Test\n";
     }
 }
 EOF
 
 # 重载 Nginx 配置
 nginx -s reload
-
-# 使用 telnet 测试
-telnet 127.0.0.1 80
-
-# 发送第 1 个请求
-GET / HTTP/1.1
-Host: 127.0.0.1
-
-# 响应：Connection: keep-alive
-
-# 发送第 2 个请求
-GET / HTTP/1.1
-Host: 127.0.0.1
-
-# 响应：Connection: keep-alive
-
-# 发送第 3 个请求
-GET / HTTP/1.1
-Host: 127.0.0.1
-
-# 响应：Connection: close  ← 达到限制，服务器主动关闭连接
 ```
-
-### 4.4 测试请求数限制
+#### 4.3.1 测试长连接
 
 ```bash
-# 配置每个连接最多 2 个请求
-cat > /data/server/nginx/conf/conf.d/keepalive-limit.conf <<'EOF'
-server {
-    listen 80;
+dc exec -it client bash
 
-    keepalive_timeout 60s;
-    keepalive_requests 2;  # 限制为 2 个请求
 
-    location / {
-        return 200 "Request processed\n";
-    }
-}
-EOF
+# 安装 telnet
+yum install -y telnet
 
-nginx -s reload
+# 连接测试
+telnet www.keepalive.com 80
 
-# 使用 telnet 测试
-telnet 127.0.0.1 80
-
-# 发送第 1 个请求
+# 输入以下内容（手动输入）：
 GET / HTTP/1.1
-Host: 127.0.0.1
-  # 按两次回车
+Host: www.keepalive.com
+  # 这里按两次回车
 
-# 响应：Connection: keep-alive
+# 查看响应，注意 Connection: keep-alive
 
-# 发送第 2 个请求
+# 在同一连接中继续请求（60 秒内）：
 GET / HTTP/1.1
-Host: 127.0.0.1
-  # 按两次回车
+Host: www.keepalive.com
+  # 再次按两次回车
 
-# 响应：Connection: close  ← 第 2 个请求后，服务器主动关闭连接
-# Connection closed by foreign host.
+# 可以持续请求，直到超时或达到 keepalive_requests 限制
 ```
+
+ 
 
 **结果说明**：
 - 第 1 个请求：`Connection: keep-alive`
-- 第 2 个请求：`Connection: close`（达到 `keepalive_requests` 限制）
-- 第 3 个请求：连接已关闭，需要重新建立连接
-
+- 第 2 个请求：`Connection: keep-alive`
+- 第 3 个请求：`Connection: close`（达到 `keepalive_requests` 限制） ; 连接已关闭，需要重新建立连接
 ---
 
 ## 📥 第五部分：文件下载服务实践
@@ -449,16 +418,17 @@ Host: 127.0.0.1
 
 ```bash
 # 准备测试文件（确保删除 index.html）
-mv /data/server/nginx/html/index.html /data/server/nginx/html/index.html.bak  # ← 关键步骤
+mkdir -p /data/wwwroot/download/{docs,images,videos}
 
-mkdir -p /data/download/{docs,images,videos}
+# 如果 /data/wwwroot/download 目录下存在 index.html，需要删除或重命名
+# mv /data/wwwroot/download/index.html /data/wwwroot/download/index.html.bak
 
-echo "Document 1" > /data/download/docs/readme.txt
-echo "Document 2" > /data/download/docs/manual.pdf
-dd if=/dev/zero of=/data/download/videos/movie.mp4 bs=10M count=1
+echo "Document 1" > /data/wwwroot/download/docs/readme.txt
+echo "Document 2" > /data/wwwroot/download/docs/manual.pdf
+dd if=/dev/zero of=/data/wwwroot/download/videos/movie.mp4 bs=10M count=1
 
 # 创建中文文件名测试
-echo "三国演义" > /data/download/三国演义.txt
+echo "三国演义" > /data/wwwroot/download/三国演义.txt
 
 # 配置下载服务器
 cat > /data/server/nginx/conf/conf.d/download.conf <<'EOF'
@@ -469,7 +439,7 @@ server {
     charset utf-8;  # 支持中文文件名
 
     location /download/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         autoindex on;                    # 开启目录索引
         autoindex_exact_size off;        # 显示友好的文件大小（MB/GB）
@@ -487,25 +457,42 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+
+# 配置dns
+cd docker-man/01.dns/03.manual-master-slave-dns/
+dc up -d
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh test.com 10.0.7.50 10.0.0.13 10.0.0.15
+dc exec -it dns-slave  /usr/local/bin/setup-dns-slave.sh test.com 10.0.0.13
+
+# 跨网段可以通信；
+sudo iptables -F -t raw; sudo iptables -F DOCKER ; sudo iptables -F  DOCKER-ISOLATION-STAGE-2; sudo iptables -P FORWARD ACCEPT
+ 
+# 跨网段不转换IP
+sudo iptables -t nat -I POSTROUTING -s 10.0.0.0/24 -d 10.0.7.0/24 -j RETURN
+
+
+
 ```
 
 #### 5.1.2 测试下载服务
 
 ```bash
+dc exec -it client curl download.test.com/download/
+
+
 # 命令行测试
-curl -H "Host: download.test.com" http://127.0.0.1/download/
+curl http://download.test.com/download/
 
 # 输出：HTML 格式的目录列表
 
 # 下载文件
-curl -H "Host: download.test.com" \
-     http://127.0.0.1/download/docs/readme.txt
+curl http://download.test.com/download/docs/readme.txt
 
 # 输出：Document 1
 
 # 下载限速测试
-time curl -H "Host: download.test.com" \
-     http://127.0.0.1/download/videos/movie.mp4 > /dev/null
+time curl http://download.test.com/download/videos/movie.mp4 > /dev/null
 # 应该需要约 10 秒（10MB ÷ 1MB/s）
 ```
 
@@ -515,9 +502,9 @@ time curl -H "Host: download.test.com" \
 cat > /data/server/nginx/conf/conf.d/download-json.conf <<'EOF'
 server {
     listen 80;
-
+    server_name json.test.com;
     location /api/files/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         autoindex on;
         autoindex_format json;  # JSON 格式输出
@@ -531,8 +518,13 @@ EOF
 # 重载 Nginx 配置
 nginx -s reload
 
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh test.com 10.0.7.50 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh test.com 10.0.0.13
+
 # 测试 JSON 输出
-curl http://127.0.0.1/api/files/ | jq .
+curl http://json.test.com/api/files/ | jq .
 
 # 输出：
 # [
@@ -558,7 +550,7 @@ curl http://127.0.0.1/api/files/ | jq .
 
 ```bash
 # 切换到 Rocky PHP 容器
-docker compose exec -it nginx-rocky-php bash
+sudo docker compose exec -it nginx-rocky-php bash
 
 # 安装 PHP-FPM
 yum install -y php php-fpm php-cli
@@ -589,7 +581,8 @@ client_body_temp_path /tmp/nginx_upload 1 2 3;
 cat > /data/server/nginx/conf/conf.d/upload.conf <<'EOF'
 server {
     listen 80;
-    root /data/server/nginx/html;
+    server_name www.upload.com;
+    root /data/wwwroot/upload;
     index index.php index.html;
 
     # PHP 处理
@@ -612,17 +605,23 @@ chown -R nginx:nginx /tmp/nginx_upload
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
 ```
 
 ### 6.3 创建上传表单
 
 ```bash
 # 创建上传目录
-mkdir -p /data/server/nginx/html/uploads
-chmod 755 /data/server/nginx/html/uploads
+mkdir -p /data/wwwroot/upload/uploads
+chmod 755 /data/wwwroot/upload/uploads
+chown nginx:nginx /data/wwwroot/upload/uploads
 
 # 创建 HTML 上传表单
-cat > /data/server/nginx/html/upload.html <<'EOF'
+cat > /data/wwwroot/upload/upload.html <<'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -673,7 +672,7 @@ EOF
 ### 6.4 创建 PHP 上传处理脚本
 
 ```bash
-cat > /data/server/nginx/html/upload.php <<'EOF'
+cat > /data/wwwroot/upload/upload.php <<'EOF'
 <?php
 $target_dir = "uploads/";
 $max_size = 50 * 1024 * 1024;  // 50MB
@@ -728,7 +727,7 @@ EOF
 # 在容器内测试
 echo "Test file content" > /tmp/test.txt
 
-curl -F "file=@/tmp/test.txt" http://127.0.0.1/upload.php
+curl -F "file=@/tmp/test.txt" http://www.upload.com/upload.php
 
 # 输出：
 # <h2>上传成功！</h2>
@@ -736,7 +735,7 @@ curl -F "file=@/tmp/test.txt" http://127.0.0.1/upload.php
 # ...
 
 # 验证文件
-ls -lh /data/server/nginx/html/uploads/
+ls -lh /data/wwwroot/upload/uploads/
 ```
 
 ### 6.6 缓冲区测试
@@ -749,10 +748,12 @@ sed -i 's/client_body_buffer_size.*/client_body_buffer_size 1024k;/' \
     /data/server/nginx/conf/conf.d/upload.conf
 
 nginx -s reload
+rm -rf /tmp/nginx_upload/*
+
 
 # 上传小文件（< 1024k）
-echo "Small file" > /tmp/small.txt
-curl -F "file=@/tmp/small.txt" http://127.0.0.1/upload.php
+echo "Small file" > /tmp/small.png
+curl -F "file=@/tmp/small.png" http://www.upload.com/upload.php
 
 # 检查临时目录（空的）
 tree /tmp/nginx_upload/
@@ -765,8 +766,8 @@ sed -i 's/client_body_buffer_size.*/client_body_buffer_size 2k;/' \
 nginx -s reload
 
 # 上传稍大文件（> 2k）
-head -c 10k /dev/urandom > /tmp/large.bin
-curl -F "file=@/tmp/large.bin" http://127.0.0.1/upload.php
+head -c 10k /dev/urandom > /tmp/large.png
+curl -F "file=@/tmp/large.png" http://www.upload.com/upload.php
 
 # 检查临时目录（有文件）
 tree /tmp/nginx_upload/
@@ -804,28 +805,29 @@ limit_rate 100k;  # 单个连接限速 100KB/s
 
 ```bash
 # 准备测试文件
-dd if=/dev/zero of=/data/download/100M.bin bs=100M count=1
+mkdir -p /data/wwwroot/download
+dd if=/dev/zero of=/data/wwwroot/download/100M.bin bs=100M count=1
 
 cat > /data/server/nginx/conf/conf.d/limit-rate.conf <<'EOF'
 server {
     listen 80;
-
+    server_name download.upload.com;
     location /slow/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         # 限制下载速度为 100KB/s
         limit_rate 100k;
     }
 
     location /fast/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         # 不限速
         limit_rate 0;
     }
 
     location /adaptive/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         # 前 10MB 不限速，之后限制为 500KB/s
         limit_rate_after 10m;
@@ -837,16 +839,21 @@ EOF
 # 重载 Nginx 配置
 nginx -s reload
 
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
+
 # 测试慢速下载
-time curl http://127.0.0.1/slow/100M.bin > /dev/null
+time curl http://download.upload.com/slow/100M.bin > /dev/null
 # 应该需要约 1000 秒（100MB ÷ 100KB/s）
 
 # 测试快速下载
-time curl http://127.0.0.1/fast/100M.bin > /dev/null
+time curl http://download.upload.com/fast/100M.bin > /dev/null
 # 应该很快完成
 
 # 测试自适应限速
-time curl http://127.0.0.1/adaptive/100M.bin > /dev/null
+time curl http://download.upload.com/adaptive/100M.bin > /dev/null
 # 前 10MB 快速，后 90MB 慢速
 ```
 
@@ -867,9 +874,9 @@ EOF
 cat > /data/server/nginx/conf/conf.d/limit-conn.conf <<'EOF'
 server {
     listen 80;
-
+    server_name limit.upload.com;
     location /download/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         # 限制每个 IP 最多 2 个并发连接
         limit_conn conn_per_ip 2;
@@ -885,18 +892,23 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
 ```
 
 #### 7.2.2 测试连接限制
 
 ```bash
 # 准备大文件
-dd if=/dev/zero of=/data/download/200M.bin bs=200M count=1
+dd if=/dev/zero of=/data/wwwroot/download/200M.bin bs=200M count=1
 
 # 启动 3 个并发下载（在后台）
-wget http://127.0.0.1/download/200M.bin -O /tmp/file1 &
-wget http://127.0.0.1/download/200M.bin -O /tmp/file2 &
-wget http://127.0.0.1/download/200M.bin -O /tmp/file3 &
+wget http://limit.upload.com/download/200M.bin -O /tmp/file1 &
+wget http://limit.upload.com/download/200M.bin -O /tmp/file2 &
+wget http://limit.upload.com/download/200M.bin -O /tmp/file3 &
 
 # 查看进程
 ps aux | grep wget
@@ -934,51 +946,84 @@ ps aux | grep wget
 | **Nginx 粒度** | 毫秒级控制 | 对同一客户端在 100ms 只能处理一个请求 |
 
 ```bash
+# 准备测试文件（使用静态文件而不是 return）
+mkdir -p /data/wwwroot/api
+echo "API Request Success" > /data/wwwroot/api/index.html
+
 # 在 http 段定义限制区域
 cat > /data/server/nginx/conf/conf.d/limit-req-zone.conf <<'EOF'
 # 限制每秒请求数（rate limiting）
-# rate=2r/s 表示每 500ms 只能处理 1 个请求
-limit_req_zone $binary_remote_addr zone=req_per_ip:10m rate=2r/s;
+# rate=1r/s 表示每 1000ms 只能处理 1 个请求
+limit_req_zone $binary_remote_addr zone=req_per_ip:10m rate=1r/s;
 EOF
 
 cat > /data/server/nginx/conf/conf.d/limit-req.conf <<'EOF'
 server {
     listen 80;
+    server_name limit-req.upload.com;
+
+    # 启用错误日志（warn 级别可以看到限流日志）
+    error_log /data/server/nginx/logs/limit-req-error.log warn;
+    access_log /data/server/nginx/logs/limit-req-access.log;
 
     location /api/ {
-        # 调用限制规则
-        limit_req zone=req_per_ip;
+        # 调用限制规则（burst=1 允许 1 个突发请求）
+        limit_req zone=req_per_ip ;
 
         # 超过限制时返回的状态码（默认 503）
         limit_req_status 503;
 
-        return 200 "API Request Success\n";
+        # 使用静态文件（重要：不能使用 return，否则限流可能不生效）
+        root /data/wwwroot;
+        index index.html;
     }
 }
 EOF
 
+# 创建日志目录
+mkdir -p /data/server/nginx/logs
+
 # 重载 Nginx 配置
 nginx -s reload
 
-# 测试 1：间隔 400ms 发送 2 个请求（失败）
-for i in {1..2}; do
-    curl http://127.0.0.1/api/
-    sleep 0.4
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
+
+# 测试 1：并发发送 5 个请求（应该看到 503）
+echo "=== 并发测试（应该有限流） ==="
+for i in {1..5}; do
+    curl -s -o /dev/null -w "请求 $i: HTTP %{http_code}\n" http://limit-req.upload.com/api/ &
+done
+wait
+
+# 预期输出：
+# 请求 1: HTTP 200  (正常处理)
+# 请求 2: HTTP 200  (burst 允许的突发)
+# 请求 3: HTTP 503  (被限流)
+# 请求 4: HTTP 503  (被限流)
+# 请求 5: HTTP 503  (被限流)
+
+# 查看错误日志（限流会记录在这里）
+echo -e "\n=== 错误日志（限流记录） ==="
+cat /data/server/nginx/logs/limit-req-error.log
+
+# 等待 2 秒让限流计数器重置
+sleep 2
+
+# 测试 2：间隔 1.1 秒发送 3 个请求（应该全部成功）
+echo -e "\n=== 慢速测试（符合限流规则） ==="
+for i in {1..3}; do
+    echo -n "请求 $i: "
+    curl -s -o /dev/null -w "HTTP %{http_code}\n" http://limit-req.upload.com/api/
+    sleep 1.1
 done
 
-# 输出：
-# API Request Success      (第 1 个成功)
-# 503 Service Temporarily Unavailable  (第 2 个失败，因为只过了 400ms)
-
-# 测试 2：间隔 500ms 发送 2 个请求（成功）
-for i in {1..2}; do
-    curl http://127.0.0.1/api/
-    sleep 0.5
-done
-
-# 输出：
-# API Request Success      (第 1 个成功)
-# API Request Success      (第 2 个成功，因为过了 500ms)
+# 预期输出：
+# 请求 1: HTTP 200
+# 请求 2: HTTP 200
+# 请求 3: HTTP 200
 ```
 
 #### 7.3.3 带突发队列的限制（burst）
@@ -1007,74 +1052,117 @@ done
 ```
 
 ```bash
-cat > /data/server/nginx/conf/conf.d/limit-req-burst.conf <<'EOF'
-server {
-    listen 80;
+# 准备测试文件
+mkdir -p /data/wwwroot/web1
+echo "nginx web1" > /data/wwwroot/web1/index.html
 
-    location /api/burst/ {
+# 修改限流区域配置（改为 rate=2r/s）
+cat > /data/server/nginx/conf/conf.d/limit-req-zone.conf <<'EOF'
+# 限制每秒请求数（rate limiting）
+# rate=2r/s 表示每 500ms 只能处理 1 个请求
+limit_req_zone $binary_remote_addr zone=req_per_ip:10m rate=2r/s;
+EOF
+
+# 配置 burst=3（不带 nodelay）
+cat > /data/server/nginx/conf/conf.d/limit-req.conf <<'EOF'
+server {
+    listen 80 default_server;
+    root /data/wwwroot/web1;
+
+    # 启用错误日志
+    error_log /data/server/nginx/logs/limit-req-error.log warn;
+    access_log /data/server/nginx/logs/limit-req-access.log;
+
+    location / {
         # burst=3: 允许突发 3 个请求排队（不带 nodelay，会延迟处理）
         limit_req zone=req_per_ip burst=3;
 
-        return 200 "Burst API Success\n";
+        # 超过限制时返回的状态码
+        limit_req_status 503;
     }
 }
 EOF
 
+# 创建日志目录
+mkdir -p /data/server/nginx/logs
+
 # 重载 Nginx 配置
 nginx -s reload
 
-# 测试：并发发送 5 个请求
+# 测试 1：串行访问（间隔足够）
+echo "=== 串行测试（每个请求间隔足够） ==="
+for i in {1..5}; do     curl http://127.0.0.1/;     sleep 0.1; done
+
+# 预期输出：全部成功
+# nginx web1
+# nginx web1
+# nginx web1
+# nginx web1
+# nginx web1
+
+# 测试 2：并发访问（模拟突发流量）
+echo -e "\n=== 并发测试（突发 5 个请求） ==="
 for i in {1..5}; do
-    curl http://127.0.0.1/api/burst/ &
+    curl -s  -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1/ &
 done
 wait
 
-# 输出（逐个延迟返回）：
-# Burst API Success  (第 1 个立即处理)
-# Burst API Success  (第 2 个延迟 500ms)
-# Burst API Success  (第 3 个延迟 1000ms)
-# Burst API Success  (第 4 个延迟 1500ms)
-# 503 Service Temporarily Unavailable  (第 5 个直接拒绝)
+# 预期输出：
+# nginx web1  (第 1 个立即处理)
+# nginx web1  (第 2 个延迟处理)
+# nginx web1  (第 3 个延迟处理)
+# nginx web1  (第 4 个延迟处理)
+# <html>      (第 5 个返回 503 错误页面)
+
+# 查看访问日志（注意时间戳变化）
+echo -e "\n=== 访问日志（观察时间戳） ==="
+tail -n 5 /data/server/nginx/logs/limit-req-access.log
+
+# 预期输出类似：
+# 10.0.7.50 - - [14/Nov/2024:11:30:09 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"
+# 10.0.7.50 - - [14/Nov/2024:11:30:09 +0800] "GET / HTTP/1.1" 503 197 "-" "curl/8.5.0"  ← 拒绝
+# 10.0.7.50 - - [14/Nov/2024:11:30:09 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"   ← 延迟
+# 10.0.7.50 - - [14/Nov/2024:11:30:10 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"   ← 延迟（秒数变化）
+# 10.0.7.50 - - [14/Nov/2024:11:30:10 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"   ← 延迟
 ```
 
-**日志分析示例**：
-```bash
-# 查看日志（注意时间戳变化）
-tail -n 5 /data/server/nginx/logs/access.log
-
-# 输出：
-# 10.0.7.50 [12/Oct/2025:11:30:09 +0800] "GET / HTTP/1.1" 200 11
-# 10.0.7.50 [12/Oct/2025:11:30:09 +0800] "GET / HTTP/1.1" 503 197  ← 拒绝
-# 10.0.7.50 [12/Oct/2025:11:30:09 +0800] "GET / HTTP/1.1" 200 11   ← 延迟
-# 10.0.7.50 [12/Oct/2025:11:30:10 +0800] "GET / HTTP/1.1" 200 11   ← 延迟（注意秒数变化）
-# 10.0.7.50 [12/Oct/2025:11:30:10 +0800] "GET / HTTP/1.1" 200 11   ← 延迟
-```
+**结果说明**：
+- 因为并发请求，谁先到谁后到无法控制
+- 第 1 个请求立即处理
+- 第 2-4 个请求放入队列，每 500ms 处理一个（可以从日志时间戳看出）
+- 第 5 个请求直接返回 503
 
 #### 7.3.4 无延迟突发限制（burst + nodelay）
 
 **配置说明**：
 - `burst=3 nodelay`：允许突发 3 个额外请求，**立即处理**不排队
-- **示例**：5 个并发请求 → 前 4 个立即处理（1 个正常 + 3 个突发），第 5 个返回 503
+- **示例**：在 500ms 内发送 5 个请求 → 前 4 个立即处理（1 个正常 + 3 个突发），第 5 个返回 503
 
 **nodelay 原理详解**：
 
 - `nodelay` 表示**无延时队列**
-- **排在队列越后面的请求等待时间越久**
-- 如果请求数过多，可能会等到**超时**也不会被处理
+- **排在队列越后面的请求等待时间越久**，如果请求数过多，可能会等到超时也不会被处理
 - **与不带 nodelay 的区别**：
   - 不带 nodelay：请求会延迟返回（每 500ms 处理一个）
   - 带 nodelay：前 N 个立即返回，超出的立即返回 503
 
 ```bash
-cat > /data/server/nginx/conf/conf.d/limit-req-nodelay.conf <<'EOF'
+# 修改配置（添加 nodelay）
+cat > /data/server/nginx/conf/conf.d/limit-req.conf <<'EOF'
 server {
-    listen 80;
+    listen 80 default_server;
+    root /data/wwwroot/web1;
 
-    location /api/nodelay/ {
+    # 启用错误日志
+    error_log /data/server/nginx/logs/limit-req-error.log warn;
+    access_log /data/server/nginx/logs/limit-req-access.log;
+
+    location / {
         # burst=3 nodelay: 允许突发 3 个请求立即处理（不延迟）
         limit_req zone=req_per_ip burst=3 nodelay;
 
-        return 200 "Nodelay API Success\n";
+        # 超过限制时返回的状态码
+        limit_req_status 503;
     }
 }
 EOF
@@ -1082,34 +1170,38 @@ EOF
 # 重载 Nginx 配置
 nginx -s reload
 
-# 测试：在 500ms 内并发发送 5 个请求
+# 测试：在 500ms 内串行发送 5 个请求（每个间隔 0.1 秒）
+echo "=== 快速串行测试（间隔 0.1 秒） ==="
 for i in {1..5}; do
-    curl http://127.0.0.1/api/nodelay/
+    curl http://127.0.0.1/
     sleep 0.1
 done
 
-# 输出（前 4 个立即返回）：
-# Nodelay API Success  (第 1 个：正常配额)
-# Nodelay API Success  (第 2 个：突发配额 1)
-# Nodelay API Success  (第 3 个：突发配额 2)
-# Nodelay API Success  (第 4 个：突发配额 3)
-# 503 Service Temporarily Unavailable  (第 5 个：超出限制)
+# 预期输出（前 4 个成功，第 5 个失败）：
+# nginx web1  (第 1 个：正常配额)
+# nginx web1  (第 2 个：突发配额 1)
+# nginx web1  (第 3 个：突发配额 2)
+# nginx web1  (第 4 个：突发配额 3)
+# <html>      (第 5 个：返回 503 错误页面)
+# <head><title>503 Service Temporarily Unavailable</title></head>
+
+# 查看访问日志
+echo -e "\n=== 访问日志（观察所有请求时间戳相同） ==="
+tail -n 5 /data/server/nginx/logs/limit-req-access.log
+
+# 预期输出类似：
+# 10.0.7.50 - - [14/Nov/2024:11:35:51 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"
+# 10.0.7.50 - - [14/Nov/2024:11:35:51 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"
+# 10.0.7.50 - - [14/Nov/2024:11:35:51 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"
+# 10.0.7.50 - - [14/Nov/2024:11:35:51 +0800] "GET / HTTP/1.1" 200 11 "-" "curl/8.5.0"
+# 10.0.7.50 - - [14/Nov/2024:11:35:51 +0800] "GET / HTTP/1.1" 503 197 "-" "curl/8.5.0"  ← 拒绝
 ```
 
-**并发测试脚本**：
-```bash
-cat > /tmp/test_limit_req.sh <<'EOF'
-#!/bin/bash
-# 并发请求测试
-for i in {1..5}; do
-    curl http://127.0.0.1/api/nodelay/ &
-done
-wait
-EOF
-
-chmod +x /tmp/test_limit_req.sh
-/tmp/test_limit_req.sh
-```
+**结果说明**：
+- 按照顺序处理，最后一个请求被拒绝
+- 与不带 nodelay 的区别：所有请求都立即返回（不延迟），从日志时间戳可以看出都在同一秒
+- 前 4 个请求（1 个正常配额 + 3 个突发配额）立即处理
+- 第 5 个请求直接返回 503
 
 ---
 
@@ -1139,7 +1231,8 @@ tail /data/server/nginx/logs/access.log | grep favicon
 cat > /data/server/nginx/conf/conf.d/favicon.conf <<'EOF'
 server {
     listen 80;
-    root /data/server/nginx/web1;
+    server_name favicon.upload.com;
+    root /data/wwwroot/web1;
 
     # 方案 1：不记录 favicon.ico 的访问日志和错误日志
     location = /favicon.ico {
@@ -1151,6 +1244,11 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
 
 # 测试：浏览器刷新页面（Ctrl + F5）
 # 查看日志（不再记录 favicon.ico 的 404）
@@ -1165,20 +1263,21 @@ tail /data/server/nginx/logs/access.log | grep favicon
 
 ```bash
 # 准备目录
-mkdir -p /data/server/nginx/html/static
+mkdir -p /data/wwwroot/static
 
 # 下载一个 favicon.ico 文件
 wget https://www.logosc.cn/uploads/output/2021/10/19/aaabb9adc7fad4ed3268b7e5ce05ba37.jpg \
-     -O /data/server/nginx/html/static/favicon.ico
+     -O /data/wwwroot/static/favicon.ico
 
 # 配置
 cat > /data/server/nginx/conf/conf.d/favicon.conf <<'EOF'
 server {
     listen 80;
-    root /data/server/nginx/html;
+    server_name favicon.upload.com;
+    root /data/wwwroot/web1;
 
     location = /favicon.ico {
-        alias /data/server/nginx/html/static/favicon.ico;
+        alias /data/wwwroot/static/favicon.ico;
         access_log off;
     }
 }
@@ -1202,12 +1301,13 @@ nginx -s reload
 
 ```bash
 # 准备测试文件
-head -c 500K /dev/urandom > /data/server/nginx/web1/large.txt
+head -c 500K /dev/urandom > /data/wwwroot/web1/large.txt
 
 cat > /data/server/nginx/conf/conf.d/gzip.conf <<'EOF'
 server {
     listen 80;
-    root /data/server/nginx/web1;
+    server_name gzip.upload.com;
+    root /data/wwwroot/web1;
 
     # 启用 Gzip 压缩
     gzip on;
@@ -1236,7 +1336,7 @@ server {
     gzip_vary on;
 
     location /no-gzip/ {
-        alias /data/server/nginx/web1/;
+        alias /data/wwwroot/web1/;
         gzip off;  # 禁用压缩
     }
 }
@@ -1244,19 +1344,24 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh upload.com 10.0.7.51 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh upload.com 10.0.0.13
 ```
 
 ### 8.2 测试压缩效果
 
 ```bash
 # 测试 1：查看未压缩的大小
-curl -I http://127.0.0.1/large.txt
+curl -I http://gzip.upload.com/large.txt
 
 # 输出：
 # Content-Length: 524288  (未压缩大小)
 
 # 测试 2：请求压缩内容
-curl -H "Accept-Encoding: gzip" -I http://127.0.0.1/large.txt
+curl -H "Accept-Encoding: gzip" -I http://gzip.upload.com/large.txt
 
 # 输出：
 # Content-Encoding: gzip  (已压缩)
@@ -1264,12 +1369,12 @@ curl -H "Accept-Encoding: gzip" -I http://127.0.0.1/large.txt
 # (注意：没有 Content-Length，因为压缩后大小动态变化)
 
 # 测试 3：使用 curl --compressed 自动解压
-curl --compressed http://127.0.0.1/large.txt > /tmp/decompressed.txt
+curl --compressed http://gzip.upload.com/large.txt > /tmp/decompressed.txt
 
 # 测试 4：对比压缩率
-curl http://127.0.0.1/large.txt | wc -c          # 未压缩
+curl http://gzip.upload.com/large.txt | wc -c          # 未压缩
 curl -H "Accept-Encoding: gzip" \
-     http://127.0.0.1/large.txt | wc -c          # 已压缩
+     http://gzip.upload.com/large.txt | wc -c          # 已压缩
 
 # 压缩率通常能达到 70-90%
 ```
@@ -1362,7 +1467,7 @@ server {
 server {
     listen 443 ssl;
     server_name secure.example.com;
-    root /data/server/nginx/web1;
+    root /data/wwwroot/web1;
 
     # SSL 证书配置
     ssl_certificate /data/server/nginx/ssl/server.crt;
@@ -1385,26 +1490,31 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh example.com 10.0.7.50 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh example.com 10.0.0.13
 ```
 
 ### 9.3 测试 HTTPS
 
 ```bash
 # 测试 1：HTTP 重定向
-curl -I http://127.0.0.1
+curl -I http://secure.example.com
 
 # 输出：
 # HTTP/1.1 301 Moved Permanently
 # Location: https://secure.example.com/
 
 # 测试 2：HTTPS 访问（跳过证书验证）
-curl -k https://127.0.0.1
+curl -k https://secure.example.com
 
 # 测试 3：查看 SSL 证书信息
-openssl s_client -connect 127.0.0.1:443 -showcerts
+openssl s_client -connect secure.example.com:443 -showcerts
 
 # 测试 4：使用 curl 显示详细信息
-curl -vk https://127.0.0.1 2>&1 | grep -i ssl
+curl -vk https://secure.example.com 2>&1 | grep -i ssl
 
 # 输出：
 # SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384
@@ -1431,7 +1541,7 @@ server {
     access_log /data/server/nginx/logs/download_access.log;
 
     location /files/ {
-        alias /data/download/;
+        alias /data/wwwroot/download/;
 
         # 目录索引
         autoindex on;
@@ -1468,124 +1578,22 @@ EOF
 
 # 重载 Nginx 配置
 nginx -s reload
+
+# 配置 DNS 解析（在宿主机执行）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+dc exec -it dns-master /usr/local/bin/setup-dns-master.sh example.com 10.0.7.50 10.0.0.13 10.0.0.15
+dc exec -it dns-slave /usr/local/bin/setup-dns-slave.sh example.com 10.0.0.13
 ```
 
 ---
-
-## 🔧 第十一部分：故障排除
-
-### 11.1 长连接问题
-
-**问题**：长连接不生效
-
-```bash
-# 检查配置
-nginx -T | grep keepalive
-
-# 检查响应头
-curl -I http://127.0.0.1
-
-# 如果看到 Connection: close，检查：
-# 1. HTTP/1.0 客户端不支持长连接
-# 2. keepalive_timeout 设置为 0
-# 3. keepalive_requests 达到上限
-```
-
-### 11.2 限速问题
-
-**问题**：limit_req 返回 503 而非 429
-
-```bash
-# 检查是否设置了 limit_req_status
-grep limit_req_status /data/server/nginx/conf/conf.d/*.conf
-
-# 添加配置
-limit_req_status 429;  # 自定义状态码
-```
-
-### 11.3 压缩问题
-
-**问题**：Gzip 压缩不生效
-
-```bash
-# 检查模块是否安装
-nginx -V 2>&1 | grep http_gzip
-
-# 检查配置
-nginx -T | grep gzip
-
-# 常见原因：
-# 1. 文件类型不在 gzip_types 中
-# 2. 文件小于 gzip_min_length
-# 3. 客户端未发送 Accept-Encoding: gzip
-```
-
----
-
-## 📋 第十二部分：测试检查清单
-
-- [ ] **内置变量**
-  - [ ] 理解常用变量含义
-  - [ ] 使用 set 自定义变量
-  - [ ] 使用 map 条件赋值
-
-- [ ] **长连接**
-  - [ ] 配置 keepalive_timeout
-  - [ ] 配置 keepalive_requests
-  - [ ] 使用 telnet 测试长连接
-
-- [ ] **文件下载**
-  - [ ] 配置 autoindex 目录索引
-  - [ ] 测试 JSON 格式输出
-  - [ ] 配置下载限速
-
-- [ ] **限速与限制**
-  - [ ] 配置 limit_rate 下载限速
-  - [ ] 配置 limit_conn 连接限制
-  - [ ] 配置 limit_req 请求频率限制
-  - [ ] 测试 burst 突发队列
-
-- [ ] **压缩**
-  - [ ] 配置 Gzip 压缩
-  - [ ] 测试压缩率
-  - [ ] 验证响应头
-
-- [ ] **HTTPS**
-  - [ ] 生成自签名证书
-  - [ ] 配置 SSL
-  - [ ] 测试 HTTPS 访问
-
----
-
-## 🎓 第十三部分：学习总结
-
-### 核心知识点
-
-1. **Nginx 变量系统**：内置变量、自定义变量、map 映射
-2. **性能优化**：长连接、Gzip 压缩、缓存控制
-3. **流量控制**：下载限速、连接限制、请求频率限制
-4. **安全加固**：HTTPS 配置、SSL/TLS 优化、请求限制
-5. **文件服务**：目录索引、下载服务、上传处理
-
-### 实战能力
-
-✅ 理解并应用 Nginx 内置变量
-✅ 配置长连接提升性能
-✅ 搭建文件下载服务器
-✅ 实现文件上传功能（PHP）
-✅ 配置多层次限速与限流
-✅ 启用 Gzip 压缩减少带宽
-✅ 部署 HTTPS 加密通信
-✅ 排查常见配置问题
-
----
+ 
 
 ## 🧹 清理环境
 
 ```bash
-docker compose down
-docker compose down --volumes
-docker compose down --volumes --rmi all
+sudo docker compose down
+sudo docker compose down --volumes
+sudo docker compose down --volumes --rmi all
 ```
 
 ---
