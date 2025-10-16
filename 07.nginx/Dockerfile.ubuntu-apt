@@ -6,6 +6,8 @@ LABEL description="Nginx binary installation on Ubuntu 24.04 via APT"
 
 # 设置非交互模式
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # 更新软件源并安装Nginx完整环境
 RUN apt update && \
@@ -13,9 +15,16 @@ RUN apt update && \
         nginx \
         nginx-core \
         fcgiwrap \
-        nginx-doc && \
+        nginx-doc \
+        vim && \
     apt clean && \
     rm -rf /var/lib/apt/lists/*
+
+# 配置 vim 支持 UTF-8 中文显示
+RUN echo 'set encoding=utf-8' >> /root/.vimrc && \
+    echo 'set fileencoding=utf-8' >> /root/.vimrc && \
+    echo 'set fileencodings=utf-8,gbk,gb2312,cp936' >> /root/.vimrc && \
+    echo 'set termencoding=utf-8' >> /root/.vimrc
 
 # 配置文件目录：/etc/nginx/
 # 网站根目录：/var/www/html/

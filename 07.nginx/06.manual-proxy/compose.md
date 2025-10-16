@@ -1,4 +1,4 @@
-# Docker Compose Nginx 反向代理与高级功能实践指南
+# sudo docker compose Nginx 反向代理与高级功能实践指南
 
 ## 📚 第一部分：基础知识
 
@@ -167,7 +167,7 @@ Docker Bridge 网络：nginx-net (10.0.7.0/24)
     └── 功能：静态资源托管（图片、CSS、JS）
 ```
 
-### 2.2 Docker Compose 配置说明
+### 2.2 sudo docker compose 配置说明
 
 ```yaml
 version: '3.8'
@@ -237,10 +237,10 @@ networks:
 cd /home/www/docker-man/07.nginx/06.manual-proxy
 
 # 2. 启动所有服务
-docker compose up -d
+sudo docker compose up -d
 
 # 3. 检查服务状态
-docker compose ps
+sudo docker compose ps
 
 # 预期输出：
 # NAME                IMAGE              STATUS    PORTS
@@ -259,7 +259,7 @@ docker network inspect 06manual-proxy_nginx-net | grep -A 3 "IPv4Address"
 
 ```bash
 # 进入代理服务器容器
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 # 创建必要目录
 mkdir -p /data/server/nginx/conf/conf.d
@@ -268,7 +268,7 @@ mkdir -p /data/server/nginx/html
 mkdir -p /tmp/nginx/cache
 
 # 启动 Nginx（如未启动）
-nginx
+/data/server/nginx/sbin/nginx
 
 # 检查 Nginx 状态
 ps aux | grep nginx
@@ -278,11 +278,11 @@ ps aux | grep nginx
 
 ```bash
 # 进入后端服务器 1 容器
-docker compose exec -it nginx-backend-1 bash
+sudo docker compose exec -it nginx-backend-1 bash
 
 # 创建测试内容
-mkdir -p /data/server/nginx/html
-cat > /data/server/nginx/html/index.html <<'EOF'
+mkdir -p /data/wwwroot/backend-1
+cat > /data/wwwroot/backend-1/index.html <<'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -302,7 +302,7 @@ cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
 server {
     listen 80;
     server_name _;
-    root /data/server/nginx/html;
+    root /data/wwwroot/backend-1;
 
     location / {
         index index.html;
@@ -321,7 +321,7 @@ server {
 EOF
 
 # 启动 Nginx
-nginx
+/data/server/nginx/sbin/nginx
 
 # 测试
 curl http://127.0.0.1/api/test
@@ -331,11 +331,11 @@ curl http://127.0.0.1/api/test
 
 ```bash
 # 进入后端服务器 2 容器
-docker compose exec -it nginx-backend-2 bash
+sudo docker compose exec -it nginx-backend-2 bash
 
 # 创建测试内容
-mkdir -p /data/server/nginx/html
-cat > /data/server/nginx/html/index.html <<'EOF'
+mkdir -p /data/wwwroot/backend-2
+cat > /data/wwwroot/backend-2/index.html <<'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -355,7 +355,7 @@ cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
 server {
     listen 80;
     server_name _;
-    root /data/server/nginx/html;
+    root /data/wwwroot/backend-2;
 
     location / {
         index index.html;
@@ -374,7 +374,7 @@ server {
 EOF
 
 # 启动 Nginx
-nginx
+/data/server/nginx/sbin/nginx
 
 # 测试
 curl http://127.0.0.1/api/test
@@ -384,17 +384,17 @@ curl http://127.0.0.1/api/test
 
 ```bash
 # 进入静态资源服务器容器
-docker compose exec -it nginx-static bash
+sudo docker compose exec -it nginx-static bash
 
 # 创建静态资源目录
-mkdir -p /data/server/nginx/html/static/{images,css,js}
+mkdir -p /data/wwwroot/nginx-static/static/{images,css,js}
 
 # 创建测试图片（模拟）
-echo "Test Image Data" > /data/server/nginx/html/static/images/logo.png
-echo "Test Image Data" > /data/server/nginx/html/static/images/banner.jpg
+echo "Test Image Data" > /data/wwwroot/nginx-static/static/images/logo.png
+echo "Test Image Data" > /data/wwwroot/nginx-static/static/images/banner.jpg
 
 # 创建测试 CSS
-cat > /data/server/nginx/html/static/css/style.css <<'EOF'
+cat > /data/wwwroot/nginx-static/static/css/style.css <<'EOF'
 /* Test CSS File */
 body {
     font-family: Arial, sans-serif;
@@ -406,7 +406,7 @@ h1 {
 EOF
 
 # 创建测试 JS
-cat > /data/server/nginx/html/static/js/app.js <<'EOF'
+cat > /data/wwwroot/nginx-static/static/js/app.js <<'EOF'
 // Test JavaScript File
 console.log('Static JS loaded from nginx-static');
 EOF
@@ -416,10 +416,10 @@ cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
 server {
     listen 80;
     server_name _;
-    root /data/server/nginx/html;
+    root /data/wwwroot/nginx-static;
 
     location /static/ {
-        alias /data/server/nginx/html/static/;
+        alias /data/wwwroot/nginx-static/static/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
@@ -427,7 +427,7 @@ server {
 EOF
 
 # 启动 Nginx
-nginx
+/data/server/nginx/sbin/nginx
 
 # 测试
 curl http://127.0.0.1/static/images/logo.png
@@ -438,7 +438,7 @@ curl http://127.0.0.1/static/css/style.css
 
 ```bash
 # 在代理服务器中测试各后端服务器
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 # 测试后端服务器 1
 curl http://10.0.7.61/api/test
@@ -497,14 +497,17 @@ if ($invalid_referer) {
 
 ```bash
 # 在静态资源服务器中配置防盗链
-docker compose exec -it nginx-static bash
+sudo docker compose exec -it nginx-static bash
+
+# 删除原有的 default.conf（避免冲突）
+rm -f /data/server/nginx/conf/conf.d/default.conf
 
 # 配置防盗链
 cat > /data/server/nginx/conf/conf.d/anti-leech.conf <<'EOF'
 server {
     listen 80;
     server_name _;
-    root /data/server/nginx/html;
+    root /data/wwwroot/nginx-static;
 
     # 防盗链保护（仅对图片）
     location ~* \.(gif|jpg|jpeg|png|bmp|webp)$ {
@@ -518,13 +521,13 @@ server {
             return 403 "Access Denied: Invalid Referer\n";
         }
 
-        root /data/server/nginx/html;
+        root /data/wwwroot/nginx-static;
         expires 30d;
     }
 
     # 其他静态资源（不做防盗链）
     location ~* \.(css|js)$ {
-        root /data/server/nginx/html;
+        root /data/wwwroot/nginx-static;
         expires 7d;
     }
 
@@ -607,12 +610,15 @@ curl -H "Referer: http://other.com/" \
 ### 4.4 返回默认图片（替代 403）
 
 ```bash
+# 删除之前的防盗链配置（避免冲突）
+rm -f /data/server/nginx/conf/conf.d/anti-leech.conf
+
 # 修改防盗链配置，返回默认图片而非 403
 cat > /data/server/nginx/conf/conf.d/anti-leech-default.conf <<'EOF'
 server {
     listen 80;
     server_name _;
-    root /data/server/nginx/html;
+    root /data/wwwroot/nginx-static;
 
     location ~* \.(gif|jpg|jpeg|png|bmp|webp)$ {
         valid_referers none blocked server_names *.example.com;
@@ -622,14 +628,14 @@ server {
             rewrite ^.*$ /static/images/hotlink-denied.png break;
         }
 
-        root /data/server/nginx/html;
+        root /data/wwwroot/nginx-static;
         expires 30d;
     }
 }
 EOF
 
 # 创建默认图片
-echo "Hotlink Denied" > /data/server/nginx/html/static/images/hotlink-denied.png
+echo "Hotlink Denied" > /data/wwwroot/nginx-static/static/images/hotlink-denied.png
 
 # 重载 Nginx
 nginx -s reload
@@ -647,24 +653,124 @@ curl -H "Referer: http://badsite.com/" \
 
 ### 5.1 Rewrite 基础示例
 
-#### 5.1.1 简单重写（内部）
+#### 5.1.1 配置 DNS 解析（支持域名测试）
 
 ```bash
+# 配置 test.com 域名解析（*.test.com 会解析到 nginx-proxy 10.0.7.60）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns
+
+# 主服务器添加 test.com 域名（包括 rewrite.test.com、last.test.com 等所有子域名）
+sudo docker compose exec -it dns-master /usr/local/bin/setup-dns-master.sh test.com 10.0.7.60 10.0.0.13 10.0.0.15
+
+# 从服务器同步 test.com 域名
+sudo docker compose exec -it dns-slave /usr/local/bin/setup-dns-slave.sh test.com 10.0.0.13
+
+# 验证 DNS 解析
+sudo docker compose exec -it client dig @10.0.0.13 rewrite.test.com
+sudo docker compose exec -it client dig @10.0.0.13 last.test.com
+sudo docker compose exec -it client dig @10.0.0.13 www.test.com
+sudo iptables -F -t raw; sudo iptables -F DOCKER ; sudo iptables -F  DOCKER-ISOLATION-STAGE-2; sudo iptables -P FORWARD ACCEPT
+# 预期输出：所有 *.test.com 域名都解析到 10.0.7.60
+```
+
+#### 5.1.2 简单重写（内部）
+
+**PCRE 正则表达式元字符**
+
+Rewrite 模块使用 PCRE（Perl Compatible Regular Expressions）风格的正则表达式，以下是常用元字符：
+
+| 元字符 | 说明 | 示例 |
+|--------|------|------|
+| `.` | 匹配除换行符外的任意字符 | `a.c` 匹配 abc, a1c |
+| `\w` | 匹配字母、数字、下划线 | `\w+` 匹配 user123 |
+| `\W` | 匹配非字母数字下划线 | `\W` 匹配空格、标点 |
+| `\s` | 匹配任意空白字符（空格、制表符） | `\s+` 匹配多个空格 |
+| `\d` | 匹配任意数字，相当于 `[0-9]` | `\d{3}` 匹配 123 |
+| `\D` | 匹配非数字字符 | `\D+` 匹配 abc |
+| `\b` | 匹配单词边界 | `\bword\b` 匹配独立单词 word |
+| `[abc]` | 匹配括号内的任意一个字符 | `[abc]` 匹配 a 或 b 或 c |
+| `[^abc]` | 匹配除括号内字符之外的任意字符 | `[^abc]` 匹配除 a、b、c 外的字符 |
+| `[a-z]` | 匹配 a 到 z 的任意字符 | `[a-z]+` 匹配小写字母 |
+| `[0-9]` | 匹配 0 到 9 的任意数字 | `[0-9]{2}` 匹配两位数字 |
+| `^` | 匹配字符串开始位置 | `^/api` 匹配以 /api 开头 |
+| `$` | 匹配字符串结束位置 | `\.html$` 匹配以 .html 结尾 |
+| `*` | 匹配前面的字符零次或多次 | `a*` 匹配空字符串、a、aa |
+| `+` | 匹配前面的字符一次或多次 | `a+` 匹配 a、aa、aaa |
+| `?` | 匹配前面的字符零次或一次 | `colou?r` 匹配 color 或 colour |
+| `{n}` | 匹配前面的字符恰好 n 次 | `\d{3}` 匹配 123 |
+| `{n,}` | 匹配前面的字符至少 n 次 | `\d{3,}` 匹配 123、1234 |
+| `{n,m}` | 匹配前面的字符 n 到 m 次 | `\d{2,4}` 匹配 12、123、1234 |
+| `\|` | 或，指定多个备选项 | `jpg\|png` 匹配 jpg 或 png |
+| `()` | 分组，捕获匹配的文本 | `(jpg\|png)$` 捕获文件扩展名 |
+| `\1` | 反向引用第 1 个捕获组 | `(a)\1` 匹配 aa |
+
+**示例说明**：
+```nginx
+# 匹配数字 ID
+location ~* ^/user/(\d+)$ {
+    # \d+ 匹配一个或多个数字
+    # () 捕获数字，可以通过 $1 引用
+}
+
+# 匹配静态文件
+location ~* \.(jpg|jpeg|png|gif)$ {
+    # \. 转义点号
+    # (jpg|jpeg|png|gif) 匹配多种扩展名
+    # $ 确保扩展名在末尾
+}
+
+# 匹配路径并捕获
+rewrite ^/old/(.*)$ /new/$1 last;
+# ^/old/ 匹配以 /old/ 开头
+# (.*) 捕获 /old/ 后面的所有内容
+# $1 引用捕获的内容
+```
+
+---
+注意添加echo模块
+[echo模块添加](../03.manual-upgrade/compose.md)
+
+```bash
+# 返回 Nginx 项目目录
+cd /home/www/docker-man/07.nginx/06.manual-proxy
+
 # 在代理服务器中配置
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
+
+
 
 cat > /data/server/nginx/conf/conf.d/rewrite-basic.conf <<'EOF'
 server {
     listen 80;
     server_name rewrite.test.com;
 
-    # 示例 1：重写 /old/ 到 /new/
+    # 示例 1：演示 rewrite + break（break 后 rewrite 模块指令不执行，但其他模块仍执行）
     location /old/ {
-        rewrite ^/old/(.*)$ /new/$1 break;
-        return 200 "Rewritten to: /new/$1\n";
+        root /data/wwwroot/nginx-proxy;  # 设置根目录（标准路径）
+        set $var1 "before-rewrite";
+        # 使用 add_header 演示（headers 模块不受 break 影响）
+        add_header X-Before "$var1" always;
+        add_header X-Original-URI "$request_uri" always;
+        rewrite ^/old/(.*)$ /new/$1 break;  # break 后停止 rewrite 模块指令
+        # break 之后，ngx_http_rewrite_module 模块的指令不再执行
+        set $var2 "after-break";        # 不会执行（rewrite 模块）
+        # 但 headers 模块的指令仍会执行（不属于 rewrite 模块）
+        add_header X-After "$var2" always;       # 会执行，但 $var2 为空（set 未执行）
+        add_header X-Rewritten-URI "$uri" always;  # 会执行，显示重写后的 URI
+        return 200 "This will NOT execute\n";  # 不会执行（rewrite 模块）
+        # break 后，Nginx 继续处理请求，查找 root + $uri 对应的文件
+        # 即查找 /data/wwwroot/nginx-proxy/new/path/file.txt
     }
 
-    # 示例 2：将 /user/123 重写为 /user.php?id=123
+    # 示例 2：对比示例 - 不使用 break
+    location /nobreak/ {
+        set $var1 "magedu";
+        set $var2 "1234";
+        echo "$var1 $var2";
+        return 200 "hello nobreak\n";  # 这行会执行，返回 200
+    }
+
+    # 示例 3：将 /user/123 重写为 /user-detail?id=123（真实重写）
     location ~* ^/user/(\d+)$ {
         rewrite ^/user/(\d+)$ /user-detail?id=$1 last;
     }
@@ -678,17 +784,112 @@ EOF
 # 重载 Nginx
 nginx -s reload
 
-# 测试
-curl -H "Host: rewrite.test.com" http://127.0.0.1/old/path/file.txt
-# 输出：Rewritten to: /new/path/file.txt
+# 创建测试文件（用于演示 break 后的文件查找）
+mkdir -p /data/wwwroot/nginx-proxy/new/path
+echo "This is the rewritten file content" > /data/wwwroot/nginx-proxy/new/path/file.txt
 
+# 测试示例 1（演示 break）- 查看完整响应
+curl -i -H "Host: rewrite.test.com" http://127.0.0.1/old/path/file.txt
+# 输出：
+# HTTP/1.1 200 OK
+# Server: nginx/1.24.0
+# Content-Type: text/plain
+# X-Before: before-rewrite
+# X-Original-URI: /old/path/file.txt
+# X-After:
+# X-Rewritten-URI: /new/path/file.txt
+#
+# This is the rewritten file content
+#
+# 说明：
+# 1. break 之前的 set 和 add_header 执行了
+#    - X-Before: before-rewrite（$var1 有值）
+#    - X-Original-URI: /old/path/file.txt（$request_uri 不变）
+# 2. rewrite 执行，URI 被重写为 /new/path/file.txt
+# 3. break 停止 rewrite 模块指令：set $var2 不执行（所以 $var2 为空）
+# 4. 但 headers 模块不受影响，add_header 仍然执行：
+#    - X-After: （空值，因为 set $var2 未执行）
+#    - X-Rewritten-URI: /new/path/file.txt（$uri 已改变）
+# 5. return 200 不执行（rewrite 模块）
+# 6. break 后，Nginx 继续处理请求：
+#    - 查找文件：root + $uri = /data/wwwroot/nginx-proxy/new/path/file.txt
+#    - 文件存在，返回文件内容："This is the rewritten file content"
+# 7. 最终响应包含：响应头（add_header 添加）+ 文件内容
+
+# 只查看响应体
+curl -H "Host: rewrite.test.com" http://127.0.0.1/old/path/file.txt
+# 输出：
+# This is the rewritten file content
+
+# 测试不存在的文件（演示 404）
+curl -i -H "Host: rewrite.test.com" http://127.0.0.1/old/path/notfound.txt
+# 输出：
+# HTTP/1.1 404 Not Found
+# Server: nginx/1.24.0
+# Content-Type: text/html
+# X-Before: before-rewrite
+# X-Original-URI: /old/path/notfound.txt
+# X-After:
+# X-Rewritten-URI: /new/path/notfound.txt
+#
+# <html>
+# <head><title>404 Not Found</title></head>
+# <body>
+# <center><h1>404 Not Found</h1></center>
+# </body>
+# </html>
+#
+# 说明：
+# - add_header 仍然执行（响应头中包含 X-Before, X-After 等）
+# - 文件 /data/wwwroot/nginx-proxy/new/path/notfound.txt 不存在
+# - Nginx 返回 404 错误页面
+
+# 测试示例 2（不使用 break 的对比）
+curl -H "Host: rewrite.test.com" http://127.0.0.1/nobreak/
+# 输出：
+# hello nobreak
+# 说明：
+# 1. set 指令执行（rewrite 阶段）
+# 2. echo 指令不执行（因为 return 在 rewrite 阶段就终止了请求）
+# 3. return 200 执行，返回 "hello nobreak"（没有 break 阻止，return 正常执行）
+
+# 查看状态码
+curl -I -H "Host: rewrite.test.com" http://127.0.0.1/nobreak/
+# 输出：
+# HTTP/1.1 200 OK
+# Content-Type: application/octet-stream
+# Content-Length: 14
+
+# 测试示例 3（真实重写）
 curl -H "Host: rewrite.test.com" http://127.0.0.1/user/123
 # 输出：User ID: 123
 ```
 
-### 5.2 last vs break 区别
+**⚠️ 重要知识点：break 只影响 rewrite 模块**
 
-#### 5.2.1 last 标志（重新匹配 location）
+`break` 指令只会停止 **ngx_http_rewrite_module** 模块的指令执行，不影响其他模块！
+
+| 模块 | 指令 | break 后是否执行 | 说明 |
+|------|------|----------------|------|
+| **rewrite 模块** | `rewrite`, `return`, `set`, `if` | ❌ 不执行 | break 后停止处理 |
+| **headers 模块** | `add_header`, `expires` | ✅ 仍执行 | 不属于 rewrite 模块 |
+| **access 模块** | `allow`, `deny` | ✅ 仍执行 | 不属于 rewrite 模块 |
+| **echo 模块** | `echo`, `echo_sleep` | ✅ 仍执行 | 第三方模块，不受影响 |
+| **content 阶段** | 文件查找、返回内容 | ✅ 继续处理 | break 后继续处理请求 |
+
+**变量区别**：
+
+| 变量 | 说明 | rewrite 后的值 |
+|------|------|---------------|
+| `$request_uri` | 原始请求 URI | `/old/path/file.txt`（不变） |
+| `$uri` | 当前处理的 URI | `/new/path/file.txt`（改变） |
+| `$document_uri` | 同 `$uri` | `/new/path/file.txt`（改变） |
+
+---
+
+### 5.3 last vs break 区别
+
+#### 5.3.1 last 标志（重新匹配 location）
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-last.conf <<'EOF'
@@ -717,14 +918,14 @@ curl -H "Host: last.test.com" http://127.0.0.1/test-last/abc
 # 说明：rewrite 后重新匹配 location，命中 /final/
 ```
 
-#### 5.2.2 break 标志（停止重写）
+#### 5.3.2 break 标志（停止重写）
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-break.conf <<'EOF'
 server {
     listen 80;
     server_name break.test.com;
-    root /data/server/nginx/html;
+    root /data/wwwroot/nginx-proxy;  # 标准路径
 
     location /test-break/ {
         rewrite ^/test-break/(.*)$ /final/$1 break;  # break 标志
@@ -741,19 +942,19 @@ EOF
 nginx -s reload
 
 # 创建测试文件
-mkdir -p /data/server/nginx/html/final
-echo "Final file content" > /data/server/nginx/html/final/abc
+mkdir -p /data/wwwroot/nginx-proxy/final
+echo "Final file content" > /data/wwwroot/nginx-proxy/final/abc
 
 # 测试
 curl -H "Host: break.test.com" http://127.0.0.1/test-break/abc
 
 # 输出：Final file content
-# 说明：rewrite 后不再匹配 location，直接查找文件 /final/abc
+# 说明：rewrite 后不再匹配 location，直接查找文件 /data/wwwroot/nginx-proxy/final/abc
 ```
 
-### 5.3 redirect vs permanent 区别
+### 5.4 redirect vs permanent 区别
 
-#### 5.3.1 临时重定向（302 redirect）
+#### 5.4.1 临时重定向（302 redirect）
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-redirect.conf <<'EOF'
@@ -778,7 +979,7 @@ curl -I -H "Host: redirect.test.com" http://127.0.0.1/temp-redirect
 # Location: http://www.example.com
 ```
 
-#### 5.3.2 永久重定向（301 permanent）
+#### 5.4.2 永久重定向（301 permanent）
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-permanent.conf <<'EOF'
@@ -803,9 +1004,9 @@ curl -I -H "Host: permanent.test.com" http://127.0.0.1/old-page
 # Location: http://www.example.com/new-page
 ```
 
-### 5.4 if 条件判断
+### 5.5 if 条件判断
 
-#### 5.4.1 if 语法
+#### 5.5.1 if 语法
 
 ```nginx
 if (condition) {
@@ -823,10 +1024,15 @@ if (condition) {
 | `~*` | 正则匹配（不区分大小写） | `if ($http_user_agent ~* "mobile")` |
 | `!~` | 正则不匹配 | `if ($uri !~ "\.jpg$")` |
 | `-f` | 文件存在 | `if (-f $request_filename)` |
+| `!-f` | 文件不存在 | `if (!-f $request_filename)` |
 | `-d` | 目录存在 | `if (-d $request_filename)` |
+| `!-d` | 目录不存在 | `if (!-d $request_filename)` |
 | `-e` | 文件或目录存在 | `if (-e $request_filename)` |
+| `!-e` | 文件或目录不存在 | `if (!-e $request_filename)` |
+| `-x` | 文件可执行 | `if (-x $request_filename)` |
+| `!-x` | 文件不可执行 | `if (!-x $request_filename)` |
 
-#### 5.4.2 if 实践示例
+#### 5.5.2 if 实践示例
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-if.conf <<'EOF'
@@ -856,7 +1062,7 @@ server {
 
     # 示例 3：文件不存在则重定向
     location /check-file {
-        root /data/server/nginx/html;
+        root /data/wwwroot/nginx-proxy;  # 标准路径
         if (!-f $request_filename) {
             rewrite ^.*$ /404.html break;
         }
@@ -875,14 +1081,33 @@ curl -H "Host: if.test.com" http://127.0.0.1/no-post
 # 输出：GET request success
 
 # 测试移动设备检测
-curl -A "Mozilla/5.0 (iPhone)" -H "Host: if.test.com" http://127.0.0.1/mobile-check
-# 输出：Mobile Page（重定向到 /mobile-page）
+root@client data]# curl -L -I -A  "Mozilla/5.0 (iPhone)" -H "Host: if.test.com" http://if.test.com/mobile-check
+# HTTP/1.1 302 Moved Temporarily
+# Server: nginx/1.24.0
+# Date: Thu, 16 Oct 2025 06:57:19 GMT
+# Content-Type: text/html
+# Content-Length: 145
+# Location: http://if.test.com/mobile-page
+# Connection: keep-alive
 
-curl -H "Host: if.test.com" http://127.0.0.1/mobile-check
-# 输出：Desktop Page
+# HTTP/1.1 200 OK
+# Server: nginx/1.24.0
+# Date: Thu, 16 Oct 2025 06:57:19 GMT
+# Content-Type: application/octet-stream
+# Content-Length: 12
+# Connection: keep-alive
+
+[root@client data]# curl -I   http://if.test.com/mobile-check
+# HTTP/1.1 200 OK
+# Server: nginx/1.24.0
+# Date: Thu, 16 Oct 2025 06:57:22 GMT
+# Content-Type: application/octet-stream
+# Content-Length: 13
+# Connection: keep-alive
+
 ```
 
-### 5.5 set 自定义变量
+### 5.6 set 自定义变量
 
 ```bash
 cat > /data/server/nginx/conf/conf.d/rewrite-set.conf <<'EOF'
@@ -923,14 +1148,217 @@ EOF
 nginx -s reload
 
 # 测试
-curl -X POST -A "Mobile Safari" -H "Host: set.test.com" http://127.0.0.1/set-test
+curl -X POST -A "Mobile Safari"  http://set.test.com/set-test
 # 输出：Backend Flag: post_method_mobile
 
 curl -H "Host: set.test.com" http://127.0.0.1/dynamic-backend?version=v2
 # 输出：Backend: http://10.0.7.62
+
+[root@client data]# curl   -A "Mobile Safari"  http://set.test.com//dynamic-backend?version=v2
+# Backend: http://10.0.7.62
+[root@client data]# curl   -A "Mobile Safari"  http://set.test.com//dynamic-backend?version=v1
+# Backend: http://10.0.7.61
+
 ```
 
-### 5.6 实战：URL 美化
+#### 5.6.1 实战：使用 set 配合 limit_rate 实现限速下载
+
+**应用场景**：根据文件类型或路径，对特定资源进行下载限速。
+
+```bash
+# 准备测试文件
+mkdir -p /data/wwwroot/nginx-proxy/downloads
+mkdir -p /data/wwwroot/nginx-proxy/files
+dd if=/dev/zero of=/data/wwwroot/nginx-proxy/downloads/normal.zip bs=10M count=1
+dd if=/dev/zero of=/data/wwwroot/nginx-proxy/downloads/slow.zip bs=10M count=1
+dd if=/dev/zero of=/data/wwwroot/nginx-proxy/downloads/slow2.zip bs=10M count=1
+dd if=/dev/zero of=/data/wwwroot/nginx-proxy/files/test.zip bs=10M count=1
+
+# 配置限速下载
+cat > /data/server/nginx/conf/conf.d/rewrite-limit.conf <<'EOF'
+server {
+    listen 80;
+    server_name limit.test.com;
+    root /data/wwwroot/nginx-proxy;  # 标准路径
+
+    # 示例 1：对特定文件限速（使用 ^~ 完整前缀匹配，优先级高于正则）
+    location ^~ /downloads/slow.zip {
+        add_header X-Match-Location "Example-1-Specific-File" always;
+        limit_rate 100k;  # 限速 100KB/s
+    }
+
+    # 示例 2：根据文件扩展名限速（正则匹配）
+    # 注意：由于示例1使用了 ^~，/downloads/slow.zip 不会被这里匹配
+    location ~* \.(zip|tar|gz)$ {
+        set $slow 0;
+        add_header X-Match-Location "Example-2-Regex" always;
+
+        # 如果是 slow2 开头的文件，则限速
+        if ($uri ~ "^/downloads/slow2") {
+            set $slow 1;
+        }
+
+        add_header X-Regex-Slow "$slow" always;
+        if ($slow) {
+            limit_rate 10k;  # 限速 10KB/s
+        }
+    }
+
+    # 示例 3：根据请求参数动态限速（使用 ^~ 避免被正则覆盖）
+    location ^~ /files/ {
+        set $download_speed 0;
+        add_header X-Match-Location "Example-3-Params" always;
+
+        # 如果 URL 参数包含 speed=slow，则限速
+        if ($arg_speed = "slow") {
+            set $download_speed 50k;  # 50KB/s
+        }
+
+        # 如果 URL 参数包含 speed=fast，则不限速
+        if ($arg_speed = "fast") {
+            set $download_speed 0;  # 不限速
+        }
+
+        # 默认限速 200KB/s
+        if ($download_speed = 0) {
+            set $download_speed 200k;
+        }
+
+        add_header X-Download-Speed "$download_speed" always;
+        limit_rate $download_speed;
+    }
+}
+EOF
+
+# 重载 Nginx
+nginx -s reload
+
+# 测试示例 1：特定文件限速（走 ^~ 完整前缀匹配，100KB/s）
+curl -I http://limit.test.com/downloads/slow.zip
+# 查看响应头：
+# X-Match-Location: Example-1-Specific-File
+# 说明匹配了示例1，limit_rate 100KB/s
+
+time curl -o /tmp/slow.zip http://limit.test.com/downloads/slow.zip
+# 预期：10MB 文件，100KB/s 速度，大约需要 100 秒
+
+# 测试示例 2：正则匹配不限速（走正则，不限速）
+curl -I http://limit.test.com/downloads/normal.zip
+# 查看响应头：
+# X-Match-Location: Example-2-Regex
+# X-Regex-Slow: 0
+# 说明匹配了示例2，不限速
+
+time curl -o /tmp/normal.zip http://limit.test.com/downloads/normal.zip
+# 预期：很快完成（不限速）
+
+# 测试示例 2：正则匹配限速（slow2.zip 会被限速 10KB/s）
+curl -I http://limit.test.com/downloads/slow2.zip
+# 查看响应头：
+# X-Match-Location: Example-2-Regex
+# X-Regex-Slow: 1
+# 说明匹配了示例2，且 if 条件触发，limit_rate 10KB/s
+
+time curl -o /tmp/slow2.zip http://limit.test.com/downloads/slow2.zip
+# 预期：10MB 文件，10KB/s 速度，大约需要 1000 秒（约 16 分钟）
+
+# 测试示例 3：参数动态限速（走 ^~ 完整前缀匹配）
+curl -I "http://limit.test.com/files/test.zip?speed=slow"
+# 查看响应头：
+# X-Match-Location: Example-3-Params
+# X-Download-Speed: 50k
+
+time curl -o /tmp/test-slow.zip "http://limit.test.com/files/test.zip?speed=slow"
+# 预期：10MB 文件，50KB/s 速度，大约需要 200 秒
+
+curl -I "http://limit.test.com/files/test.zip?speed=fast"
+# 查看响应头：
+# X-Match-Location: Example-3-Params
+# X-Download-Speed: 0
+
+time curl -o /tmp/test-fast.zip "http://limit.test.com/files/test.zip?speed=fast"
+# 预期：很快完成（不限速）
+
+curl -I "http://limit.test.com/files/test.zip"
+# 查看响应头：
+# X-Match-Location: Example-3-Params
+# X-Download-Speed: 200k
+
+time curl -o /tmp/test-default.zip "http://limit.test.com/files/test.zip"
+# 预期：10MB 文件，200KB/s 速度，大约需要 50 秒
+```
+
+**⚠️ Location 匹配优先级说明**：
+
+本示例特别展示了 Nginx location 匹配优先级问题，这是配置中最容易出错的地方！
+
+| 优先级 | 匹配类型 | 语法 | 示例 | 说明 |
+|-------|---------|------|------|------|
+| **1** | 精确匹配 | `= /path` | `location = /downloads/slow.zip` | 完全匹配时优先级最高 |
+| **2** | 完整前缀匹配 | `^~ /path` | `location ^~ /downloads/slow.zip` | 匹配后不再检查正则 |
+| **3** | 正则匹配 | `~ pattern` | `location ~* \.(zip\|tar)$` | 按配置顺序，先匹配先使用 |
+| **4** | 前缀匹配 | `/path` | `location /downloads/` | 最长前缀优先 |
+
+**本示例配置分析**：
+
+```nginx
+# 示例 1：^~ /downloads/slow.zip
+# 匹配优先级：2（完整前缀匹配）
+# 请求 /downloads/slow.zip → 匹配示例1，limit_rate 100KB/s
+
+# 示例 2：~* \.(zip|tar|gz)$
+# 匹配优先级：3（正则匹配）
+# 请求 /downloads/normal.zip → 匹配示例2（因为示例1没有匹配）
+# 请求 /downloads/slow2.zip → 匹配示例2，且 if 条件触发，limit_rate 10KB/s
+
+# 示例 3：^~ /files/
+# 匹配优先级：2（完整前缀匹配）
+# 请求 /files/test.zip → 匹配示例3（因为 ^~ 优先于正则）
+```
+
+**关键知识点**：
+
+1. **`^~` 的作用**：一旦匹配，就不再检查后续的正则 location
+2. **正则的风险**：会覆盖普通前缀匹配（如示例3如果不用 `^~`，会被示例2的正则覆盖）
+3. **调试技巧**：使用 `add_header X-Match-Location` 来判断匹配了哪个 location
+
+**如果配置错误**（旧版本问题）：
+
+```nginx
+# ❌ 错误配置
+location /downloads/slow.zip { ... }     # 前缀匹配，优先级低
+location ~* \.(zip|tar|gz)$ { ... }      # 正则匹配，优先级高
+location /downloads/ { ... }             # 前缀匹配，优先级低
+
+# 结果：所有 .zip 文件都被正则捕获，示例1和示例3失效！
+```
+
+**修复方法**：使用 `^~` 提升优先级，避免被正则覆盖。
+
+---
+
+**limit_rate 指令说明**：
+
+| 指令 | 说明 | 示例 |
+|------|------|------|
+| `limit_rate` | 限制向客户端传送响应的速率 | `limit_rate 100k;` |
+| `limit_rate_after` | 传输指定大小后才开始限速 | `limit_rate_after 5m;` |
+
+**实际应用场景**：
+
+1. **防止带宽被大文件下载占满**
+2. **提供付费用户高速下载，免费用户限速下载**
+3. **保护服务器资源，避免恶意下载**
+
+```nginx
+# 组合使用：下载 5MB 后开始限速
+location /downloads/ {
+    limit_rate_after 5m;   # 前 5MB 不限速
+    limit_rate 200k;       # 5MB 之后限速为 200KB/s
+}
+```
+
+### 5.7 实战：URL 美化
 
 ```bash
 # 将 /article.php?id=123&page=2 重写为 /article/123/page/2
@@ -969,12 +1397,15 @@ nginx -s reload
 
 # 测试
 curl -H "Host: beauty.test.com" http://127.0.0.1/article/123
+curl beauty.test.com/article/123
 # 输出：Article ID: 123, Page:
 
 curl -H "Host: beauty.test.com" http://127.0.0.1/article/456/page/3
+curl beauty.test.com/article/123/page/3
 # 输出：Article ID: 456, Page: 3
 
 curl -H "Host: beauty.test.com" http://127.0.0.1/category/tech
+curl beauty.test.com/category/tech
 # 输出：Category: tech
 ```
 
@@ -1018,7 +1449,7 @@ location /api/ {
 
 ```bash
 # 在代理服务器中配置
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 cat > /data/server/nginx/conf/conf.d/proxy-basic.conf <<'EOF'
 server {
@@ -1037,7 +1468,7 @@ nginx -s reload
 
 # 测试（从宿主机访问）
 curl -H "Host: proxy.test.com" http://127.0.0.1:8060/
-
+http://proxy.test.com/
 # 预期输出：后端服务器 1 的首页内容（Backend Server 1）
 ```
 
@@ -1162,7 +1593,7 @@ EOF
 nginx -s reload
 
 # 测试：停止后端服务器 1
-docker compose exec nginx-backend-1 nginx -s stop
+sudo docker compose exec nginx-backend-1 nginx -s stop
 
 # 再次访问，请求会自动转发到后端服务器 2
 curl -H "Host: health.test.com" http://127.0.0.1:8060/api/test
@@ -1201,13 +1632,30 @@ EOF
 nginx -s reload
 
 # 在后端服务器中查看请求头
-docker compose exec nginx-backend-1 bash
+sudo docker compose exec nginx-backend-1 bash
 
-# 配置后端显示请求头
-cat > /data/server/nginx/conf/conf.d/show-headers.conf <<'EOF'
+# 在现有的 default.conf 中添加 /headers location（避免创建新文件导致冲突）
+cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
 server {
     listen 80;
+    server_name _;
+    root /data/wwwroot/backend-1;
 
+    location / {
+        index index.html;
+    }
+
+    location /api/ {
+        default_type application/json;
+        return 200 '{
+            "server": "backend-1",
+            "ip": "10.0.7.61",
+            "time": "$time_iso8601",
+            "request_uri": "$request_uri"
+        }\n';
+    }
+
+    # 新增：显示接收到的请求头
     location /headers {
         default_type text/plain;
         return 200 "
@@ -1216,6 +1664,7 @@ X-Real-IP: $http_x_real_ip
 X-Forwarded-For: $http_x_forwarded_for
 X-Forwarded-Proto: $http_x_forwarded_proto
 X-Custom-Header: $http_x_custom_header
+Remote-Addr: $remote_addr
 ";
     }
 }
@@ -1224,7 +1673,7 @@ EOF
 nginx -s reload
 
 # 测试（从代理服务器访问）
-docker compose exec nginx-proxy bash
+sudo docker compose exec nginx-proxy bash
 curl -H "Host: headers.test.com" http://127.0.0.1/headers
 
 # 预期输出：
@@ -1254,7 +1703,7 @@ Nginx 代理服务器（10.0.7.60）
 
 ```bash
 # 在代理服务器中配置
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 cat > /data/server/nginx/conf/conf.d/proxy-separation.conf <<'EOF'
 # 定义后端服务器组
@@ -1272,8 +1721,8 @@ server {
     listen 80;
     server_name separation.test.com;
 
-    # 静态资源：CSS、JS、图片
-    location ~* \.(css|js|jpg|jpeg|png|gif|ico|webp|svg)$ {
+    # 静态资源：HTML、CSS、JS、图片
+    location ~* \.(html|htm|css|js|jpg|jpeg|png|gif|ico|webp|svg)$ {
         proxy_pass http://backend_static;
         proxy_set_header Host $host;
 
@@ -1300,7 +1749,7 @@ server {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
     }
 
-    # 默认请求：转发到后端
+    # 默认请求：转发到后端动态服务器
     location / {
         proxy_pass http://backend_dynamic;
         proxy_set_header Host $host;
@@ -1318,7 +1767,7 @@ nginx -s reload
 
 ```bash
 # 从代理服务器测试
-docker compose exec nginx-proxy bash
+sudo docker compose exec nginx-proxy bash
 
 # 测试图片
 curl -I -H "Host: separation.test.com" http://127.0.0.1/static/images/logo.png
@@ -1347,12 +1796,12 @@ done
 
 ```bash
 # 在静态服务器查看访问日志
-docker compose exec nginx-static tail /data/server/nginx/logs/access.log
+sudo docker compose exec nginx-static tail /data/server/nginx/logs/access.log
 
 # 应看到 /static/ 和图片请求
 
 # 在后端服务器 1 查看访问日志
-docker compose exec nginx-backend-1 tail /data/server/nginx/logs/access.log
+sudo docker compose exec nginx-backend-1 tail /data/server/nginx/logs/access.log
 
 # 应看到 /api/ 请求
 ```
@@ -1360,10 +1809,10 @@ docker compose exec nginx-backend-1 tail /data/server/nginx/logs/access.log
 ### 7.4 完整测试页面
 
 ```bash
-# 在后端服务器 1 创建测试页面
-docker compose exec nginx-backend-1 bash
+# 在静态服务器创建测试页面（HTML 是静态资源，应放在静态服务器）
+sudo docker compose exec nginx-static bash
 
-cat > /data/server/nginx/html/demo.html <<'EOF'
+cat > /data/wwwroot/nginx-static/demo.html <<'EOF'
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1373,15 +1822,23 @@ cat > /data/server/nginx/html/demo.html <<'EOF'
 </head>
 <body>
     <h1>动静分离测试页面</h1>
+    <p>这是静态服务器 (10.0.7.63) 上的 HTML 文件</p>
     <img src="/static/images/logo.png" alt="Logo">
     <script src="/static/js/app.js"></script>
-    <div id="api-result"></div>
+    <div id="api-result">正在加载 API 数据...</div>
     <script>
+        // 调用动态 API（会转发到 backend-1 或 backend-2）
         fetch('/api/test')
             .then(res => res.json())
             .then(data => {
+                document.getElementById('api-result').innerHTML =
+                    '<strong>API Server:</strong> ' + data.server + '<br>' +
+                    '<strong>API IP:</strong> ' + data.ip + '<br>' +
+                    '<strong>Time:</strong> ' + data.time;
+            })
+            .catch(err => {
                 document.getElementById('api-result').innerText =
-                    'API Server: ' + data.server;
+                    'API 请求失败: ' + err.message;
             });
     </script>
 </body>
@@ -1390,6 +1847,58 @@ EOF
 
 # 从宿主机访问
 curl -H "Host: separation.test.com" http://127.0.0.1:8060/demo.html
+
+# 查看响应头（确认是否来自静态服务器）
+curl -I -H "Host: separation.test.com" http://127.0.0.1:8060/demo.html
+# 应该看到：
+# Cache-Control: public, immutable
+# Expires: （30天后的日期）
+
+# 在浏览器中访问（如果配置了 DNS）
+# http://separation.test.com/demo.html
+```
+
+**⚠️ 动静分离架构说明**：
+
+在本示例中，资源的分离策略如下：
+
+| 资源类型 | 扩展名 | 转发目标 | 缓存策略 | 说明 |
+|---------|-------|---------|---------|------|
+| **HTML 文件** | `.html`, `.htm` | nginx-static (10.0.7.63) | 30天 | HTML 也是静态资源 |
+| **CSS 文件** | `.css` | nginx-static (10.0.7.63) | 30天 | 样式表文件 |
+| **JS 文件** | `.js` | nginx-static (10.0.7.63) | 30天 | JavaScript 文件 |
+| **图片文件** | `.jpg`, `.png`, `.gif` 等 | nginx-static (10.0.7.63) | 30天 | 图片资源 |
+| **静态目录** | `/static/*` | nginx-static (10.0.7.63) | 7天 | 统一静态资源目录 |
+| **API 请求** | `/api/*` | backend_dynamic (10.0.7.61/62) | 不缓存 | 动态数据接口 |
+| **其他请求** | `/` | backend_dynamic (10.0.7.61/62) | 默认 | 动态页面、表单提交等 |
+
+**关键知识点**：
+
+1. **HTML 是静态资源**：虽然 HTML 包含 JavaScript 代码可以调用 API，但 HTML 文件本身是静态的，应该放在静态服务器上并设置长缓存
+2. **Location 匹配优先级**：
+   - 正则匹配 `~* \.(html|css|js)$` 优先于前缀匹配 `/`
+   - 所以 `/demo.html` 会被正则捕获，转发到静态服务器
+   - `/api/test` 会被 `/api/` 前缀匹配，转发到动态服务器
+3. **浏览器中的 JavaScript**：HTML 文件中的 JavaScript 代码（`fetch('/api/test')`）会在**浏览器端执行**，直接向代理服务器发起 `/api/test` 请求，这个请求会被转发到动态服务器
+
+**请求流程**：
+
+```
+浏览器请求 /demo.html
+    ↓
+nginx-proxy (10.0.7.60)
+    ↓ 匹配 ~* \.(html)$
+nginx-static (10.0.7.63) - 返回 HTML 文件
+    ↓
+浏览器收到 HTML 并解析
+    ↓
+浏览器执行 JavaScript: fetch('/api/test')
+    ↓
+浏览器再次向 nginx-proxy 请求 /api/test
+    ↓
+nginx-proxy (10.0.7.60)
+    ↓ 匹配 /api/
+backend-1 或 backend-2 (10.0.7.61/62) - 返回 JSON 数据
 ```
 
 ---
@@ -1419,7 +1928,7 @@ proxy_cache_path /path/to/cache
 
 ```bash
 # 在代理服务器中配置
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 # 创建缓存目录
 mkdir -p /tmp/nginx/cache
@@ -1489,7 +1998,7 @@ nginx -s reload
 
 ```bash
 # 在代理服务器中测试
-docker compose exec nginx-proxy bash
+sudo docker compose exec nginx-proxy bash
 
 # 第 1 次访问（缓存未命中）
 curl -I -H "Host: cache.test.com" http://127.0.0.1/
@@ -1529,18 +2038,134 @@ done
 
 #### 8.2.3 查看缓存文件
 
+**缓存目录结构说明**：
+
+Nginx 缓存文件按照 `levels=1:2` 配置，生成两级目录结构：
+- 第一级目录：MD5 哈希的最后 1 个字符
+- 第二级目录：MD5 哈希的倒数第 2-3 个字符
+- 文件名：完整的 MD5 哈希值
+
 ```bash
-# 查看缓存目录结构
-ls -lR /tmp/nginx/cache/
+# 1. 查看缓存目录树形结构
+tree /tmp/nginx/cache/ -L 3
 
 # 预期输出：
 # /tmp/nginx/cache/
-# /tmp/nginx/cache/1/
-# /tmp/nginx/cache/1/a2/
-# /tmp/nginx/cache/1/a2/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxa2
+# ├── 1
+# │   └── a2
+# │       └── 7e2b55c4c38e99561caa378268f87a21
+# ├── 9
+# │   └── cf
+# │       └── 7e2b55c4c38e99561caa378268f87cf9
+# └── temp  # 临时目录
 
-# 查看缓存文件内容（前几行是元数据）
+# 2. 查看缓存文件详细信息
+ls -lh /tmp/nginx/cache/1/*/*
+
+# 输出示例：
+# -rw------- 1 nginx nginx 453 Oct 18 10:00 /tmp/nginx/cache/1/a2/7e2b55c4c38e99561caa378268f87a21
+
+# 3. 查看缓存文件类型
+file /tmp/nginx/cache/1/a2/*
+
+# 输出：
+# /tmp/nginx/cache/1/a2/7e2b55c4c38e99561caa378268f87a21: data
+# 说明：缓存文件是二进制数据文件
+
+# 4. 查看缓存文件完整内容
+cat /tmp/nginx/cache/1/a2/7e2b55c4c38e99561caa378268f87a21
+
+# 输出示例：
+# ⏎KEY: httpcache.test.com/
+# HTTP/1.1 200 OK
+# Server: nginx/1.24.0
+# Date: Thu, 18 Oct 2025 02:00:00 GMT
+# Content-Type: text/html
+# Content-Length: 18
+# Last-Modified: Wed, 17 Oct 2025 10:00:00 GMT
+# Connection: close
+# ETag: "671234567890"
+# X-Cache-Status: HIT
+# Accept-Ranges: bytes
+#
+# Static Web Server  # ← 实际缓存的内容
+
+# 5. 只查看缓存文件头部（元数据）
 head -20 /tmp/nginx/cache/1/*/*
+
+# 6. 只查看缓存的实际内容（跳过头部）
+tail -n +15 /tmp/nginx/cache/1/a2/* | head -5
+
+# 7. 查看缓存文件的修改时间
+stat /tmp/nginx/cache/1/a2/*
+
+# 输出：
+# File: /tmp/nginx/cache/1/a2/7e2b55c4c38e99561caa378268f87a21
+# Size: 453         Blocks: 8          IO Block: 4096   regular file
+# Access: (0600/-rw-------)  Uid: (  101/  nginx)   Gid: (  101/  nginx)
+# Access: 2025-10-18 10:05:00.000000000 +0800
+# Modify: 2025-10-18 10:00:00.000000000 +0800  # ← 缓存创建时间
+# Change: 2025-10-18 10:00:00.000000000 +0800
+
+# 8. 统计缓存文件数量
+find /tmp/nginx/cache -type f | wc -l
+
+# 9. 统计缓存总大小
+du -sh /tmp/nginx/cache
+
+# 输出：
+# 15M  /tmp/nginx/cache
+
+# 10. 查看最近缓存的文件（按修改时间排序）
+find /tmp/nginx/cache -type f -printf '%T@ %p\n' | sort -rn | head -10 | awk '{print $2}' | xargs ls -lh
+```
+
+**缓存文件内容结构**：
+
+```
+┌─────────────────────────────────────┐
+│ 缓存键（Cache Key）                  │  ← KEY: 行，标识缓存内容
+├─────────────────────────────────────┤
+│ HTTP 响应头（Response Headers）      │  ← HTTP/1.1 状态码及响应头
+│ - HTTP/1.1 200 OK                   │
+│ - Server: nginx                     │
+│ - Date: ...                         │
+│ - Content-Type: ...                 │
+│ - Last-Modified: ...                │
+│ - ETag: ...                         │
+├─────────────────────────────────────┤
+│ 空行                                 │  ← 头部与内容的分隔
+├─────────────────────────────────────┤
+│ HTTP 响应体（Response Body）         │  ← 实际缓存的内容
+│ 例如：HTML 页面、JSON 数据、图片等    │
+└─────────────────────────────────────┘
+```
+
+**实用技巧**：
+
+```bash
+# 技巧 1：根据 URL 查找缓存文件
+# 计算 URL 的 MD5 值
+echo -n "httpcache.test.com/" | md5sum
+# 输出：7e2b55c4c38e99561caa378268f87cf9
+
+# 根据 MD5 定位缓存文件路径
+# 最后 1 位：9 → /tmp/nginx/cache/9/
+# 倒数 2-3 位：cf → /tmp/nginx/cache/9/cf/
+# 完整文件名：7e2b55c4c38e99561caa378268f87cf9
+
+# 技巧 2：监控缓存文件变化
+watch -n 1 'find /tmp/nginx/cache -type f | wc -l'
+
+# 技巧 3：查看缓存命中率
+# 通过日志统计 X-Cache-Status
+tail -1000 /data/server/nginx/logs/access.log | grep "X-Cache-Status: HIT" | wc -l
+tail -1000 /data/server/nginx/logs/access.log | grep "X-Cache-Status: MISS" | wc -l
+
+# 技巧 4：清除过期缓存
+# Nginx 会自动清理（根据 inactive 参数）
+# 手动清理：
+find /tmp/nginx/cache -type f -mtime +1 -delete  # 删除 1 天前的缓存
 ```
 
 ### 8.3 缓存控制
@@ -1585,9 +2210,9 @@ EOF
 nginx -s reload
 
 # 测试不同参数的缓存
-curl -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=1
-curl -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=2
-curl -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=1
+curl -I -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=1
+curl -I -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=2
+curl -I -H "Host: cache-adv.test.com" http://127.0.0.1/api/test?id=1
 
 # 第一个和第三个请求缓存相同（参数相同）
 # 第二个请求单独缓存（参数不同）
@@ -1626,6 +2251,7 @@ curl -I -H "Host: cache-cookie.test.com" http://127.0.0.1/
 
 # 测试：有 Cookie 时不缓存
 curl -I -b "nocache=1" -H "Host: cache-cookie.test.com" http://127.0.0.1/
+curl -I  -H "Host: cache-cookie.test.com" http://127.0.0.1?nocache=1
 # X-Cache-Status: BYPASS（跳过缓存）
 ```
 
@@ -1673,16 +2299,200 @@ location ~ /purge(/.*) {
 
 ### 9.2 X-Real-IP 和 X-Forwarded-For
 
-| 请求头 | 说明 | 格式 |
-|--------|------|------|
-| **X-Real-IP** | 客户端真实 IP（单个值） | `1.2.3.4` |
-| **X-Forwarded-For** | 客户端及代理链 IP（逗号分隔） | `1.2.3.4, 5.6.7.8, 9.10.11.12` |
+**核心区别**：
+
+| 特性 | X-Real-IP | X-Forwarded-For |
+|------|-----------|----------------|
+| **用途** | 记录客户端的真实 IP 地址 | 记录经过的代理服务器的 IP 地址列表 |
+| **格式** | 单个 IP 地址 | 逗号分隔的 IP 列表 |
+| **示例** | `1.2.3.4` | `1.2.3.4, 5.6.7.8, 9.10.11.12` |
+| **含义** | 最初发起请求的客户端 IP | 完整的代理链路（从左到右） |
+| **设置方式** | `proxy_set_header X-Real-IP $remote_addr;` | `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` |
+| **是否标准** | 非标准头（常用但非 RFC 标准） | RFC 7239 准标准头 |
+| **多层代理** | 只记录第一层代理看到的客户端 IP | 记录完整代理链 |
+| **使用场景** | 简单的单层代理场景 | 多层代理、CDN、负载均衡场景 |
+
+**详细说明**：
+
+#### 9.2.1 X-Real-IP 详解
+
+**设置方式**：
+```nginx
+proxy_set_header X-Real-IP $remote_addr;
+```
+
+**工作原理**：
+- `$remote_addr` 是 Nginx 内置变量，表示与当前 Nginx 直接建立连接的客户端 IP
+- X-Real-IP 是一个自定义 HTTP 头，用于传递这个 IP 给后端服务器
+- 每次代理转发时，会**覆盖**之前的 X-Real-IP 值
+
+**示例场景**：
+```
+客户端（1.2.3.4）→ Nginx 代理（10.0.7.60）→ 后端服务器（10.0.7.61）
+
+在 Nginx 代理上：
+$remote_addr = 1.2.3.4
+设置：X-Real-IP: 1.2.3.4
+
+后端服务器收到：
+X-Real-IP: 1.2.3.4  ← 记录了真实客户端 IP
+```
+
+**优点**：
+- 简单直接，易于理解
+- 只包含一个 IP，便于解析
+
+**缺点**：
+- 多层代理时，会丢失中间代理信息
+- 如果客户端伪造 X-Real-IP 头，可能被覆盖（取决于配置）
+
+---
+
+#### 9.2.2 X-Forwarded-For 详解
+
+**设置方式**：
+```nginx
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
+**$proxy_add_x_forwarded_for 变量展开**：
+```
+$proxy_add_x_forwarded_for = $http_x_forwarded_for, $remote_addr
+```
+
+**工作原理**：
+- 如果请求已经包含 X-Forwarded-For 头，追加当前 `$remote_addr`
+- 如果请求没有 X-Forwarded-For 头，创建新的并设置为 `$remote_addr`
+- 每次代理转发时，会**追加**新的 IP，而不是覆盖
+
+**示例场景 1：单层代理**
+```
+客户端（1.2.3.4）→ Nginx 代理（10.0.7.60）→ 后端服务器（10.0.7.61）
+
+在 Nginx 代理上：
+$remote_addr = 1.2.3.4
+$http_x_forwarded_for = 空（客户端未设置）
+$proxy_add_x_forwarded_for = 1.2.3.4
+
+后端服务器收到：
+X-Forwarded-For: 1.2.3.4  ← 最左边是真实客户端 IP
+```
+
+**示例场景 2：多层代理**
+```
+客户端（1.2.3.4）→ CDN（5.6.7.8）→ Nginx 代理（10.0.7.60）→ 后端服务器（10.0.7.61）
+
+在 CDN 上：
+X-Forwarded-For: 1.2.3.4  ← CDN 添加
+
+在 Nginx 代理上：
+$remote_addr = 5.6.7.8（CDN 的 IP）
+$http_x_forwarded_for = 1.2.3.4（来自 CDN）
+$proxy_add_x_forwarded_for = 1.2.3.4, 5.6.7.8
+
+后端服务器收到：
+X-Forwarded-For: 1.2.3.4, 5.6.7.8
+                   ↑         ↑
+              真实客户端    CDN IP
+```
+
+**优点**：
+- 保留完整的代理链路
+- 可以追溯请求经过的所有代理
+- 适合复杂的网络架构
+
+**缺点**：
+- 包含多个 IP，需要解析
+- 客户端可以伪造 X-Forwarded-For 头（需要后端验证）
+
+---
+
+#### 9.2.3 如何选择？
+
+**使用 X-Real-IP 的场景**：
+1. **简单的单层代理架构**
+2. **后端只需要知道真实客户端 IP**
+3. **不关心中间代理链路**
+
+**使用 X-Forwarded-For 的场景**：
+1. **多层代理架构（如 CDN + 负载均衡 + 应用服务器）**
+2. **需要追溯完整的代理链路**
+3. **安全审计需求（记录所有代理 IP）**
+4. **需要防止 IP 伪造（可以验证 IP 链）**
+
+**推荐配置**：
+```nginx
+location / {
+    proxy_pass http://backend;
+
+    # 同时设置两个头（推荐）
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    # 还可以设置协议头
+    proxy_set_header X-Forwarded-Proto $scheme;  # http 或 https
+
+    # 设置原始 Host
+    proxy_set_header Host $host;
+}
+```
+
+---
+
+#### 9.2.4 读取真实客户端 IP 的最佳实践
+
+**后端服务器读取逻辑**：
+
+```nginx
+# 优先级：X-Real-IP > X-Forwarded-For 最左边的 IP > $remote_addr
+
+# 方法 1：使用 map 提取真实 IP
+map $http_x_forwarded_for $real_ip {
+    ~^([^,]+) $1;          # 提取 X-Forwarded-For 最左边的 IP
+    default   $remote_addr;
+}
+
+# 方法 2：使用 realip 模块（推荐）
+set_real_ip_from 10.0.7.60;           # 信任代理服务器 IP
+set_real_ip_from 10.0.7.0/24;         # 信任整个代理网段
+real_ip_header X-Forwarded-For;       # 从 X-Forwarded-For 提取 IP
+real_ip_recursive on;                 # 递归查找（跳过信任的代理 IP）
+
+# 此时 $remote_addr 已经是真实客户端 IP
+log_format main '$remote_addr - $remote_user [$time_local] "$request"';
+```
+
+**安全注意事项**：
+
+1. **防止 IP 伪造**：
+```nginx
+# 只信任已知的代理服务器
+set_real_ip_from 10.0.7.60;  # 只信任这个代理
+set_real_ip_from 5.6.7.0/24; # 只信任 CDN 网段
+
+# 不要信任所有 IP
+# ❌ set_real_ip_from 0.0.0.0/0;  # 不安全！
+```
+
+2. **验证 IP 格式**：
+```nginx
+# 确保 X-Forwarded-For 包含有效的 IP
+if ($http_x_forwarded_for !~ "^([0-9]{1,3}\.){3}[0-9]{1,3}") {
+    return 400 "Invalid X-Forwarded-For";
+}
+```
+
+3. **日志记录完整信息**：
+```nginx
+log_format detailed '$remote_addr - $http_x_real_ip - $http_x_forwarded_for '
+                    '[$time_local] "$request" $status';
+```
 
 ### 9.3 配置 IP 透传（代理服务器）
 
 ```bash
 # 在代理服务器中配置
-docker compose exec -it nginx-proxy bash
+sudo docker compose exec -it nginx-proxy bash
 
 cat > /data/server/nginx/conf/conf.d/proxy-real-ip.conf <<'EOF'
 upstream backend_realip {
@@ -1721,21 +2531,63 @@ nginx -s reload
 
 ```bash
 # 在后端服务器 1 中配置
-docker compose exec nginx-backend-1 bash
+sudo docker compose exec nginx-backend-1 bash
 
-cat > /data/server/nginx/conf/conf.d/realip-backend.conf <<'EOF'
-server {
-    listen 80;
+# 第一步：在主配置文件的 http 块中定义 log_format（log_format 只能在 http 上下文）
+# 备份原配置
+cp /data/server/nginx/conf/nginx.conf /data/server/nginx/conf/nginx.conf.bak
 
-    # 自定义日志格式（记录真实 IP）
+# 方法 A：手动编辑（推荐，更可靠）
+vim /data/server/nginx/conf/nginx.conf
+# 在 http { 块中添加以下内容：
     log_format real_ip '$http_x_real_ip - $remote_user [$time_local] '
                        '"$request" $status $body_bytes_sent '
                        '"$http_referer" "$http_user_agent" '
                        'X-Forwarded-For: $http_x_forwarded_for';
 
+ 
+
+ 
+# 第二步：在现有的 default.conf 中添加 /show-ip location（避免创建新文件导致冲突）
+cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
+server {
+    listen 80;
+    server_name _;
+    root /data/wwwroot/backend-1;
+    charset utf-8;
+    # 使用在 nginx.conf 中定义的自定义日志格式
     access_log /data/server/nginx/logs/realip_access.log real_ip;
 
+    location / {
+        index index.html;
+    }
+
+    location /api/ {
+        default_type application/json;
+        return 200 '{
+            "server": "backend-1",
+            "ip": "10.0.7.61",
+            "time": "$time_iso8601",
+            "request_uri": "$request_uri"
+        }\n';
+    }
+
+    # 显示接收到的请求头
+    location /headers {
+        default_type text/plain;
+        return 200 "
+Host: $host
+X-Real-IP: $http_x_real_ip
+X-Forwarded-For: $http_x_forwarded_for
+X-Forwarded-Proto: $http_x_forwarded_proto
+X-Custom-Header: $http_x_custom_header
+Remote-Addr: $remote_addr
+";
+    }
+
+    # 新增：显示真实 IP 信息
     location /show-ip {
+     charset utf-8;
         default_type text/plain;
         return 200 "
 Remote Addr (代理 IP): $remote_addr
@@ -1747,33 +2599,194 @@ X-Forwarded-Proto (协议): $http_x_forwarded_proto
 }
 EOF
 
+# 删除可能存在的 realip-backend.conf（避免冲突）
+rm -f /data/server/nginx/conf/conf.d/realip-backend.conf
+
+# 验证配置
+nginx -t
+
 # 重载 Nginx
 nginx -s reload
+
+# 第三步：测试配置
+# 从代理服务器发起请求
+exit  # 退出 backend-1 容器
+
+sudo docker compose exec nginx-proxy bash
+curl http://10.0.7.61/show-ip
+
+# 预期输出：
+# Remote Addr (代理 IP): 10.0.7.60
+# X-Real-IP (真实客户端 IP): <宿主机 IP>
+# X-Forwarded-For (完整 IP 链): <宿主机 IP>
+# X-Forwarded-Proto (协议): http
+
+# 查看后端服务器的日志（应该记录真实客户端 IP）
+sudo docker compose exec nginx-backend-1 tail -5 /data/server/nginx/logs/realip_access.log
+
+# 预期日志格式：
+# <真实客户端 IP> - - [18/Oct/2025:10:00:00 +0800] "GET /show-ip HTTP/1.0" 200 123 "-" "curl/7.68.0" X-Forwarded-For: <真实客户端 IP>
 ```
+
+**⚠️ 重要说明：log_format 指令的上下文限制**
+
+| 指令 | 允许的上下文 | 说明 |
+|------|-------------|------|
+| `log_format` | **仅 `http` 块** | ❌ 不能在 `server` 或 `location` 中使用 |
+| `access_log` | `http`, `server`, `location` | ✅ 可以在多个位置使用 |
+
+**错误示例**：
+```nginx
+server {
+    log_format real_ip '...';  # ❌ 错误！会报错
+    access_log /path/to/log real_ip;
+}
+```
+
+**正确示例**：
+```nginx
+http {
+    log_format real_ip '...';  # ✅ 正确！在 http 块中定义
+
+    server {
+        access_log /path/to/log real_ip;  # ✅ 在 server 中引用
+    }
+}
+```
+
+**⚠️ 重要说明：避免多配置文件冲突**
+
+在本示例中，backend-1 容器已经存在 `default.conf` 监听 80 端口，因此我们**不能创建新的配置文件**也监听 80 端口，否则会导致冲突。
+
+**错误做法**（会导致冲突）：
+```bash
+# ❌ default.conf 和 realip-backend.conf 同时存在
+ls conf/conf.d/
+# default.conf         realip-backend.conf  # 两个文件都监听 80 端口！
+
+# default.conf:
+server { listen 80; server_name _; ... }
+
+# realip-backend.conf:
+server { listen 80; ... }  # 冲突！
+```
+
+**正确做法**（在现有配置中添加）：
+```bash
+# ✅ 直接修改 default.conf，在原有 server 块中添加新的 location
+server {
+    listen 80;
+    server_name _;
+    location / { ... }          # 原有
+    location /api/ { ... }      # 原有
+    location /headers { ... }   # 原有
+    location /show-ip { ... }   # 新增
+}
+```
+
+**关键规则**：
+- 一个端口只能有一个默认 server（`server_name _` 或无 `server_name`）
+- 添加新功能时，应该在现有 server 块中添加新的 location
+- 只有当需要不同的 `server_name` 时，才创建新的配置文件
+
+---
+
+**常见错误排查**：
+
+**错误 1：log_format 指令位置错误**
+
+```
+nginx: [emerg] "log_format" directive is not allowed here in /path/to/file.conf:8
+```
+
+**原因**：`log_format` 指令放在了错误的位置（server 或 location 块中）
+
+**解决步骤**：
+1. 将 `log_format` 定义从 `server` 块移到主配置文件的 `http` 块
+2. 保留 `server` 块中的 `access_log` 指令
+3. 验证配置：`nginx -t`
+4. 重载 Nginx：`nginx -s reload`
 
 #### 9.4.2 方法 2：使用 realip 模块（修改 $remote_addr）
 
 ```bash
-cat > /data/server/nginx/conf/conf.d/realip-module.conf <<'EOF'
+# 在现有的 default.conf 中添加 realip 模块配置（避免创建新文件导致冲突）
+cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
 server {
     listen 80;
+    server_name _;
+    root /data/wwwroot/backend-1;
 
-    # 信任的代理服务器 IP
-    set_real_ip_from 10.0.7.60;
-    set_real_ip_from 10.0.7.0/24;  # 信任整个网段
+    # 使用 realip 模块：信任的代理服务器 IP
+    set_real_ip_from 10.0.7.60;          # 信任代理服务器
+    set_real_ip_from 10.0.7.0/24;        # 信任整个网段
 
     # 从哪个请求头获取真实 IP
-    real_ip_header X-Real-IP;  # 或 X-Forwarded-For
+    real_ip_header X-Real-IP;            # 或 X-Forwarded-For
 
-    # 是否递归查找
+    # 是否递归查找（适用于多层代理）
     real_ip_recursive off;
 
+    # 使用在 nginx.conf 中定义的自定义日志格式
+    access_log /data/server/nginx/logs/realip_access.log;
+
+    location / {
+        index index.html;
+    }
+
+    location /api/ {
+        default_type application/json;
+        return 200 '{
+            "server": "backend-1",
+            "ip": "10.0.7.61",
+            "time": "$time_iso8601",
+            "request_uri": "$request_uri"
+        }\n';
+    }
+
+    # 显示接收到的请求头
+    location /headers {
+        default_type text/plain;
+        return 200 "
+Host: $host
+X-Real-IP: $http_x_real_ip
+X-Forwarded-For: $http_x_forwarded_for
+X-Forwarded-Proto: $http_x_forwarded_proto
+X-Custom-Header: $http_x_custom_header
+Remote-Addr: $remote_addr
+";
+    }
+
+    # 显示真实 IP 信息（方法1：使用 $http_x_real_ip 变量）
+    location /show-ip {
+        default_type text/plain;
+        return 200 "
+Remote Addr (代理 IP): $remote_addr
+X-Real-IP (真实客户端 IP): $http_x_real_ip
+X-Forwarded-For (完整 IP 链): $http_x_forwarded_for
+X-Forwarded-Proto (协议): $http_x_forwarded_proto
+";
+    }
+
+    # 测试 realip 模块效果（方法2：$remote_addr 已被替换）
     location /real-ip-test {
-        return 200 "Remote Addr: $remote_addr\n";
-        # 此时 $remote_addr 已被替换为真实客户端 IP
+        default_type text/plain;
+        return 200 "Remote Addr (已替换为真实 IP): $remote_addr
+X-Real-IP: $http_x_real_ip
+X-Forwarded-For: $http_x_forwarded_for
+
+说明：启用 realip 模块后，$remote_addr 变量会被自动替换为真实客户端 IP
+";
     }
 }
 EOF
+
+# 删除可能存在的冲突配置文件
+rm -f /data/server/nginx/conf/conf.d/realip-backend.conf
+rm -f /data/server/nginx/conf/conf.d/realip-module.conf
+
+# 验证配置
+nginx -t
 
 # 重载 Nginx
 nginx -s reload
@@ -1785,7 +2798,7 @@ nginx -s reload
 
 ```bash
 # 从代理服务器访问后端
-docker compose exec nginx-proxy bash
+sudo docker compose exec nginx-proxy bash
 
 curl -H "Host: realip.test.com" http://127.0.0.1/show-ip
 
@@ -1797,32 +2810,165 @@ curl -H "Host: realip.test.com" http://127.0.0.1/show-ip
 
 #### 9.5.2 多层代理测试
 
-假设有多层代理：
+使用现有容器构建真实的三层代理架构：
 
 ```
-客户端（1.2.3.4）
-  → 代理1（5.6.7.8）→ 设置 X-Forwarded-For: 1.2.3.4
-  → 代理2（10.0.7.60）→ 追加 X-Forwarded-For: 1.2.3.4, 5.6.7.8
-  → 后端（10.0.7.61）→ 接收 X-Forwarded-For: 1.2.3.4, 5.6.7.8, 10.0.7.60
+宿主机/客户端
+  ↓
+第1层：nginx-proxy (10.0.7.60) - 代理服务器
+  ↓ proxy_pass 到 backend-1
+第2层：nginx-backend-1 (10.0.7.61) - 中间代理
+  ↓ proxy_pass 到 backend-2
+第3层：nginx-backend-2 (10.0.7.62) - 最终后端
 ```
 
-配置代理服务器追加模式：
+**配置步骤**：
 
-```nginx
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```bash
+# 第1层：配置 nginx-proxy 代理到 backend-1
+sudo docker compose exec nginx-proxy bash
+
+cat > /data/server/nginx/conf/conf.d/proxy-multilayer.conf <<'EOF'
+server {
+    listen 80;
+    server_name multilayer.test.com;
+
+    location / {
+        proxy_pass http://10.0.7.61;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+
+nginx -s reload
+exit
+
+# 第2层：配置 backend-1 作为中间代理，转发到 backend-2
+sudo docker compose exec nginx-backend-1 bash
+
+cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    # 继续代理到 backend-2（第3层）
+    location / {
+        proxy_pass http://10.0.7.62;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $http_x_real_ip;  # 透传第1层设置的 X-Real-IP
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;  # 追加当前层 IP
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+    }
+}
+EOF
+
+nginx -s reload
+exit
+
+# 第3层：配置 backend-2 显示接收到的所有 IP 信息
+sudo docker compose exec nginx-backend-2 bash
+
+cat > /data/server/nginx/conf/conf.d/default.conf <<'EOF'
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        default_type text/plain;
+        charset utf-8;
+        return 200 "=== 第3层后端 (backend-2) 接收到的信息 ===
+
+Remote Addr (直接连接的 IP): $remote_addr
+  ↑ 这是第2层代理 backend-1 的 IP: 10.0.7.61
+
+X-Real-IP (第1层设置): $http_x_real_ip
+  ↑ 这是宿主机/客户端的真实 IP
+
+X-Forwarded-For (完整代理链): $http_x_forwarded_for
+  ↑ 格式：客户端IP, 第1层代理IP, 第2层代理IP
+  ↑ 例如：172.17.0.1, 10.0.7.60, 10.0.7.61
+
+X-Forwarded-Proto: $http_x_forwarded_proto
+
+Request URI: $request_uri
+Host: $host
+";
+    }
+}
+EOF
+
+nginx -s reload
+exit
+
+ 
+ 
+# 测试多层代理
+curl -H "Host: multilayer.test.com" http://127.0.0.1/
+
+# 预期输出：
+# === 第3层后端 (backend-2) 接收到的信息 ===
+#
+# Remote Addr (直接连接的 IP): 10.0.7.61
+#   ↑ 这是第2层代理 backend-1 的 IP: 10.0.7.61
+#
+# X-Real-IP (第1层设置): 172.17.0.1
+#   ↑ 这是宿主机/客户端的真实 IP
+#
+# X-Forwarded-For (完整代理链): 172.17.0.1, 10.0.7.60, 10.0.7.61
+#   ↑ 格式：客户端IP, 第1层代理IP, 第2层代理IP
+#   ↑ 例如：172.17.0.1, 10.0.7.60, 10.0.7.61
+#
+# X-Forwarded-Proto: http
+# Request URI: /
+# Host: multilayer.test.com
 ```
 
-`$proxy_add_x_forwarded_for` 展开为：`$http_x_forwarded_for, $remote_addr`
+**关键知识点：X-Forwarded-For 的累积过程**
+
+每一层代理都会执行 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+
+`$proxy_add_x_forwarded_for` 的值为：`$http_x_forwarded_for, $remote_addr`
+
+| 代理层 | $remote_addr | $http_x_forwarded_for（接收） | $proxy_add_x_forwarded_for（发送） |
+|-------|-------------|-------------------------|------------------------------|
+| **第1层 (proxy)** | 172.17.0.1（客户端） | 空 | `172.17.0.1` |
+| **第2层 (backend-1)** | 10.0.7.60（第1层） | `172.17.0.1` | `172.17.0.1, 10.0.7.60` |
+| **第3层 (backend-2)** | 10.0.7.61（第2层） | `172.17.0.1, 10.0.7.60` | `172.17.0.1, 10.0.7.60, 10.0.7.61` |
+
+**请求流程图**：
+
+```
+宿主机 (172.17.0.1)
+  ↓ HTTP 请求
+nginx-proxy (10.0.7.60) - 第1层
+  ├─ $remote_addr = 172.17.0.1
+  ├─ X-Real-IP: 172.17.0.1
+  └─ X-Forwarded-For: 172.17.0.1
+     ↓ proxy_pass http://10.0.7.61
+nginx-backend-1 (10.0.7.61) - 第2层
+  ├─ $remote_addr = 10.0.7.60
+  ├─ $http_x_real_ip = 172.17.0.1（透传）
+  ├─ $http_x_forwarded_for = 172.17.0.1
+  └─ X-Forwarded-For: 172.17.0.1, 10.0.7.60（追加）
+     ↓ proxy_pass http://10.0.7.62
+nginx-backend-2 (10.0.7.62) - 第3层（最终后端）
+  ├─ $remote_addr = 10.0.7.61
+  ├─ $http_x_real_ip = 172.17.0.1（不变）
+  └─ $http_x_forwarded_for = 172.17.0.1, 10.0.7.60, 10.0.7.61
+```
 
 #### 9.5.3 查看日志验证
 
 ```bash
 # 在后端服务器查看日志
-docker compose exec nginx-backend-1 bash
+sudo docker compose exec nginx-backend-1 bash
 tail -f /data/server/nginx/logs/realip_access.log
 
 # 从代理访问
-docker compose exec nginx-proxy curl -H "Host: realip.test.com" http://127.0.0.1/
+sudo docker compose exec nginx-proxy curl -H "Host: realip.test.com" http://127.0.0.1/
 
 # 日志输出：
 # 10.0.7.60 - - [12/Oct/2025:10:30:00] "GET / HTTP/1.0" 200 X-Forwarded-For: 10.0.7.60
@@ -1895,6 +3041,53 @@ location /test {
 }
 ```
 
+**常见死循环场景**：
+
+```nginx
+# 场景 1：rewrite 到自身
+location /page {
+    rewrite ^/page$ /page last;  # ❌ 无限循环
+}
+
+# 场景 2：多个 location 互相重写
+location /a {
+    rewrite ^/a$ /b last;
+}
+location /b {
+    rewrite ^/b$ /a last;  # ❌ /a 和 /b 互相重定向
+}
+
+# 场景 3：正则匹配导致的循环
+location /files {
+    rewrite ^/files/(.*)$ /files/$1 last;  # ❌ 重写后路径不变
+}
+```
+
+**如何避免死循环**：
+
+1. **使用 break 代替 last**（如果不需要重新匹配 location）
+2. **确保重写后的 URI 与原 URI 不同**
+3. **使用条件判断避免重复重写**：
+
+```nginx
+location /test {
+    # 使用变量标记，避免重复重写
+    if ($uri !~ "^/new/") {
+        rewrite ^/test/(.*)$ /new/$1 last;
+    }
+}
+
+location /new {
+    # 处理重写后的请求
+    return 200 "Rewritten to /new\n";
+}
+```
+
+**⚠️ 重要提示**：
+- Nginx 默认允许最多 10 次内部重定向
+- 超过此限制会返回 `500 Internal Server Error`
+- 错误日志会显示：`rewrite or internal redirection cycle`
+
 #### 问题 2：last 和 break 混淆
 
 **问题**：使用 `last` 但后续 location 未生效。
@@ -1915,13 +3108,173 @@ location /new {
 # 场景 2：直接查找文件
 location /files {
     rewrite ^/files/(.*)$ /data/$1 break;  # 使用 break
-    root /www;
+    root /data/wwwroot/nginx-proxy;  # 标准路径
 }
 ```
 
 ---
 
 ### 10.3 反向代理问题
+
+#### 10.3.0 502 vs 504 错误区分
+
+在反向代理场景中，502 和 504 是最常见的错误，但它们的原因和解决方法完全不同。
+
+**错误对比表**：
+
+| 特性 | 502 Bad Gateway | 504 Gateway Timeout |
+|------|----------------|---------------------|
+| **HTTP 状态码** | 502 | 504 |
+| **含义** | 网关或代理服务器从上游服务器收到无效响应 | 网关或代理服务器等待上游服务器响应超时 |
+| **根本原因** | 后端服务器不可用 | 后端服务器响应时间过长 |
+| **常见场景** | • 后端服务未启动<br>• 后端端口未监听<br>• 后端进程崩溃<br>• 防火墙阻止连接 | • 后端处理时间过长<br>• 数据库查询慢<br>• 网络延迟高<br>• 代理超时时间过短 |
+| **网络层面** | TCP 连接失败（无法建立连接） | TCP 连接成功，但读取响应超时 |
+| **发生时机** | 代理尝试连接后端时失败 | 代理等待后端响应时超时 |
+
+**502 错误示例**：
+
+```bash
+# 场景：后端服务未启动
+sudo docker compose exec nginx-backend-1 nginx -s stop
+
+# 访问代理服务器
+curl http://127.0.0.1:8060/
+# 输出：
+# <html>
+# <head><title>502 Bad Gateway</title></head>
+# <body>
+# <center><h1>502 Bad Gateway</h1></center>
+# <center>nginx/1.24.0</center>
+# </body>
+# </html>
+
+# 错误日志：
+# connect() failed (111: Connection refused) while connecting to upstream
+```
+
+**504 错误示例**：
+
+```bash
+# 场景：后端处理时间过长
+# 配置后端服务器模拟慢响应
+cat > /data/server/nginx/conf/conf.d/slow-backend.conf <<'EOF'
+server {
+    listen 80;
+    location /slow {
+        # 延迟 10 秒返回
+        echo_sleep 10;
+        echo "Slow response";
+    }
+}
+EOF
+
+# 配置代理服务器，设置 2 秒超时
+cat > /data/server/nginx/conf/conf.d/proxy-timeout.conf <<'EOF'
+server {
+    listen 80;
+    location / {
+        proxy_pass http://10.0.7.61;
+        proxy_read_timeout 2s;  # 2 秒超时
+    }
+}
+EOF
+
+# 访问代理服务器
+curl http://127.0.0.1:8060/slow
+# 输出：
+# <html>
+# <head><title>504 Gateway Timeout</title></head>
+# <body>
+# <center><h1>504 Gateway Timeout</h1></center>
+# <center>nginx/1.24.0</center>
+# </body>
+# </html>
+
+# 错误日志：
+# upstream timed out (110: Connection timed out) while reading response header from upstream
+```
+
+**排查步骤**：
+
+**502 Bad Gateway 排查**：
+```bash
+# 1. 检查后端服务是否运行
+sudo docker compose ps
+ps aux | grep nginx
+
+# 2. 检查后端端口是否监听
+netstat -tlnp | grep :80
+ss -tlnp | grep :80
+
+# 3. 测试后端连通性
+telnet 10.0.7.61 80
+curl http://10.0.7.61/
+
+# 4. 检查防火墙规则
+iptables -L -n | grep 80
+
+# 5. 查看 Nginx 错误日志
+tail -f /data/server/nginx/logs/error.log
+```
+
+**504 Gateway Timeout 排查**：
+```bash
+# 1. 检查后端响应时间
+time curl http://10.0.7.61/api/test
+
+# 2. 检查代理超时配置
+nginx -T | grep timeout
+
+# 3. 增加超时时间（见下方解决方案）
+
+# 4. 优化后端性能
+# - 数据库查询优化
+# - 添加缓存
+# - 代码性能优化
+```
+
+**解决方案**：
+
+**502 解决方案**：
+```nginx
+# 1. 启动后端服务
+nginx -s start
+
+# 2. 配置健康检查和故障转移
+upstream backend {
+    server 10.0.7.61 max_fails=3 fail_timeout=10s;
+    server 10.0.7.62 backup;  # 备用服务器
+}
+
+# 3. 配置自动重试
+location / {
+    proxy_pass http://backend;
+    proxy_next_upstream error timeout http_502 http_503 http_504;
+}
+```
+
+**504 解决方案**：
+```nginx
+location / {
+    proxy_pass http://backend;
+
+    # 增加超时时间
+    proxy_connect_timeout 60s;  # 连接超时（默认 60s）
+    proxy_send_timeout 60s;     # 发送超时（默认 60s）
+    proxy_read_timeout 60s;     # 读取超时（默认 60s）
+
+    # 或根据业务需求设置更长时间
+    # proxy_read_timeout 300s;  # 5 分钟
+}
+```
+
+**⚠️ 重要提示**：
+- **502 是连接问题**：后端服务器物理上不可达或服务未运行
+- **504 是性能问题**：后端服务器可达但响应慢
+- 优先修复 502（服务可用性问题），再优化 504（性能问题）
+- 不要盲目增加超时时间，应该优化后端性能
+
+---
 
 #### 问题 1：后端收到错误的 Host 头
 
@@ -2027,7 +3380,7 @@ proxy_cache_methods GET HEAD;  # 只缓存 GET 和 HEAD
 nginx -T | grep X-Real-IP
 
 # 2. 检查后端配置
-docker compose exec nginx-backend-1 bash
+sudo docker compose exec nginx-backend-1 bash
 nginx -T | grep real_ip
 
 # 3. 测试请求头
@@ -2209,7 +3562,7 @@ location /api-new {
 # 场景 2：重写后直接访问文件（用 break）
 location /images {
     rewrite ^/images/(.*)$ /data/pics/$1 break;
-    root /www;
+    root /data/wwwroot/nginx-proxy;  # 标准路径
 }
 ```
 
@@ -2296,10 +3649,10 @@ real_ip_header X-Real-IP;
 **方法 1：查看日志**
 ```bash
 # 静态服务器日志
-docker compose exec nginx-static tail -f /data/server/nginx/logs/access.log
+sudo docker compose exec nginx-static tail -f /data/server/nginx/logs/access.log
 
 # 后端服务器日志
-docker compose exec nginx-backend-1 tail -f /data/server/nginx/logs/access.log
+sudo docker compose exec nginx-backend-1 tail -f /data/server/nginx/logs/access.log
 ```
 
 **方法 2：添加响应头**
@@ -2412,13 +3765,13 @@ server {
 
 ```bash
 # 1. 停止所有容器
-docker compose down
+sudo docker compose down
 
 # 2. 删除缓存目录
 rm -rf /tmp/nginx/cache
 
 # 3. 完全清理（包括镜像）
-docker compose down --volumes --rmi all
+sudo docker compose down --volumes --rmi all
 ```
 
 ---
