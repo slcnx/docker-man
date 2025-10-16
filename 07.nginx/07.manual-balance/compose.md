@@ -1,4 +1,4 @@
-# Docker Compose Nginx 负载均衡完整实践指南
+# sudo docker compose Nginx 负载均衡完整实践指南
 
 ## 📚 第一部分:负载均衡基础知识
 
@@ -39,20 +39,20 @@ Docker Bridge 网络:nginx-net (10.0.7.0/24)
 ├── 10.0.7.71  - Web 服务器 1（nginx-web-1, Rocky）
 ├── 10.0.7.72  - Web 服务器 2（nginx-web-2, Ubuntu）
 ├── 10.0.7.73  - Web 服务器 3（nginx-web-3, Rocky, 备用）
-├── 10.0.7.76  - MySQL 模拟服务器（mysql-mock）
-└── 10.0.7.77  - Redis 模拟服务器（redis-mock）
+├── 10.0.7.76  - MySQL 服务器（mysql-server, MySQL 8.0）
+└── 10.0.7.77  - Redis 服务器（redis-server, Redis 7.0）
 ```
 
 ### 2.2 服务说明
 
-| 服务名 | IP地址 | 端口映射 | 系统 | 角色 |
-|--------|--------|----------|------|------|
-| nginx-lb | 10.0.7.70 | 8070:80, 3306:3306, 6379:6379 | Ubuntu | 负载均衡器 |
+| 服务名 | IP地址 | 端口映射 | 镜像/系统 | 角色 |
+|--------|--------|----------|----------|------|
+| nginx-lb | 10.0.7.70 | 8070:80, 3306:3306, 6379:6379, 9000:9000 | Ubuntu | 负载均衡器 + 四层代理 |
 | nginx-web-1 | 10.0.7.71 | 8071:80 | Rocky | 后端 Web 服务器 |
 | nginx-web-2 | 10.0.7.72 | 8072:80 | Ubuntu | 后端 Web 服务器 |
 | nginx-web-3 | 10.0.7.73 | 8073:80 | Rocky | 备用 Web 服务器 |
-| mysql-mock | 10.0.7.76 | 3307:3306 | Ubuntu | MySQL 模拟服务器 |
-| redis-mock | 10.0.7.77 | 6380:6379 | Rocky | Redis 模拟服务器 |
+| mysql-server | 10.0.7.76 | 3307:3306 | MySQL 8.0 | MySQL 数据库服务器 |
+| redis-server | 10.0.7.77 | 6380:6379 | Redis 7.0 | Redis 缓存服务器 |
 
 ---
 
@@ -65,10 +65,10 @@ Docker Bridge 网络:nginx-net (10.0.7.0/24)
 cd /home/www/docker-man/07.nginx/07.manual-balance
 
 # 2. 启动所有容器
-docker compose up -d
+sudo docker compose up -d
 
 # 3. 检查容器状态
-docker compose ps
+sudo docker compose ps
 
 # 4. 查看网络配置
 docker network inspect 07manual-balance_nginx-net
@@ -150,14 +150,14 @@ server address [parameters];
 #### 5.1.1 进入负载均衡器容器
 
 ```bash
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 ```
 
 #### 5.1.2 配置后端服务器 1（nginx-web-1）
 
 ```bash
 # 进入容器
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 
 # 创建测试页面
 mkdir -p /data/server/nginx/html
@@ -188,7 +188,7 @@ EOF
 
 ```bash
 # 进入容器
-docker compose exec -it nginx-web-2 bash
+sudo docker compose exec -it nginx-web-2 bash
 
 # 创建测试页面
 mkdir -p /data/server/nginx/html
@@ -219,7 +219,7 @@ EOF
 
 ```bash
 # 进入容器
-docker compose exec -it nginx-web-3 bash
+sudo docker compose exec -it nginx-web-3 bash
 
 # 创建测试页面
 mkdir -p /data/server/nginx/html
@@ -250,7 +250,7 @@ EOF
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置 Nginx 负载均衡
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -312,7 +312,7 @@ curl http://localhost:8070
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置权重负载
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -374,7 +374,7 @@ curl http://localhost:8070
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置最大连接数限制
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -408,7 +408,7 @@ EOF
 
 ```bash
 # 进入容器
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 
 # 创建 10MB 测试文件
 mkdir -p /data/server/nginx/html
@@ -437,7 +437,7 @@ EOF
 
 ```bash
 # 进入容器
-docker compose exec -it nginx-web-2 bash
+sudo docker compose exec -it nginx-web-2 bash
 
 # 创建 10MB 测试文件
 mkdir -p /data/server/nginx/html
@@ -484,7 +484,7 @@ for i in {1..20}; do wget http://localhost:8070/10.img & done
 ps aux | grep wget
 
 # 进入 nginx-web-1 容器,查看连接数量
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 ss -tnep | grep 80
 ```
 
@@ -517,7 +517,7 @@ ESTAB  0  0  10.0.7.71:80  10.0.7.70:45681  users:(("nginx",pid=124,fd=11))
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置两个独立的 upstream 组
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -602,7 +602,7 @@ curl -H "Host: group2.example.com" http://localhost:8070
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置备用服务器
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -651,12 +651,12 @@ curl http://localhost:8070
 
 ```bash
 # 停止 nginx-web-1 服务
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 /data/server/nginx/sbin/nginx -s stop
 exit
 
 # 停止 nginx-web-2 服务
-docker compose exec -it nginx-web-2 bash
+sudo docker compose exec -it nginx-web-2 bash
 /data/server/nginx/sbin/nginx -s stop
 exit
 
@@ -685,7 +685,7 @@ curl http://localhost:8070
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置平滑下线（10.0.7.72 准备下线）
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -717,8 +717,8 @@ EOF
 
 ```bash
 # 重启所有后端服务器
-docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx
-docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx
+sudo docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx
+sudo docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx
 
 # 在宿主机测试
 curl http://localhost:8070
@@ -751,7 +751,7 @@ curl http://localhost:8070
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置 ip_hash
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -793,7 +793,7 @@ curl http://localhost:8070
 # 预期输出:RealServer-1（固定）
 
 # 客户端2测试（进入 nginx-web-1 容器测试）
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 curl 10.0.7.70
 # 预期输出:RealServer-2（固定）
 
@@ -826,7 +826,7 @@ hash key [consistent];
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置自定义 Key Hash
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -865,7 +865,7 @@ curl http://localhost:8070
 # 预期输出:RealServer-1（固定）
 
 # 客户端2测试（进入 nginx-web-1 容器测试）
-docker compose exec -it nginx-web-1 bash
+sudo docker compose exec -it nginx-web-1 bash
 curl 10.0.7.70
 # 预期输出:RealServer-2（固定）
 
@@ -1237,7 +1237,7 @@ load_module /usr/lib/nginx/modules/ngx_stream_module.so;
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 检查 nginx 编译参数
 /data/server/nginx/sbin/nginx -V 2>&1 | grep -o 'with-stream[^ ]*'
@@ -1351,165 +1351,186 @@ nginx: the configuration file /data/server/nginx/conf/nginx.conf syntax is ok
 nginx: configuration file /data/server/nginx/conf/nginx.conf test is successful
 ```
 
-### 15.4 准备 MySQL 模拟服务器
+### 15.4 准备 MySQL 服务器
 
-**⚠️ 说明**: 本示例提供两种方式:
-1. **简单模拟方式**（使用 Nginx stream 模拟,便于快速测试）
-2. **真实安装方式**（安装真实 MySQL 服务器）
+本示例使用官方 MySQL 8.0 镜像,已通过 docker-compose.yaml 自动配置。
 
-#### 15.4.1 方式一: 使用 Nginx 模拟 MySQL（快速测试）
+#### 15.4.1 查看 MySQL 服务状态
 
 ```bash
-# 进入 mysql-mock 容器
-docker compose exec -it mysql-mock bash
+# 查看 MySQL 容器状态
+docker ps | grep mysql-server
 
-# 配置 Nginx 监听 3306 端口（模拟 MySQL）
-cat > /data/server/nginx/conf/nginx.conf <<'EOF'
-load_module /usr/lib/nginx/modules/ngx_stream_module.so;
-
-worker_processes auto;
-events {
-    worker_connections 1024;
-}
-
-stream {
-    server {
-        listen 3306;
-        return "MySQL Mock Server on 10.0.7.76:3306\n";
-    }
-}
-EOF
-
-# 启动 Nginx
-/data/server/nginx/sbin/nginx
+# 预期输出:
+# CONTAINER ID   IMAGE        COMMAND                  STATUS         PORTS
+# abc123def456   mysql:8.0    "docker-entrypoint.s…"   Up 2 minutes   0.0.0.0:3307->3306/tcp
 ```
 
-#### 15.4.2 方式二: 安装真实 MySQL 服务器（生产环境）
+#### 15.4.2 测试 MySQL 连接
+
+**MySQL 配置说明**（已在 compose.yaml 中配置）:
+- 根用户: `root` / `rootpass123`
+- 普通用户: `testuser` / `testpass`
+- 默认数据库: `testdb`
+- 监听地址: `0.0.0.0` （允许远程连接）
 
 ```bash
-# 进入 mysql-mock 容器（Ubuntu 系统）
-docker compose exec -it mysql-mock bash
-
-# 1. 安装 MySQL 服务器
-apt update
-apt install -y mysql-server
-
-# 2. 修改 MySQL 配置,允许远程访问
-cat >> /etc/mysql/mysql.conf.d/mysqld.cnf <<'EOF'
-
-# 允许远程连接
-bind-address = 0.0.0.0
-EOF
-
-# 3. 启动 MySQL 服务
-service mysql start
-
-# 4. 查看 MySQL 监听端口
-ss -tnlp | grep 3306
-# 预期输出:
-# LISTEN  0  80  0.0.0.0:3306  0.0.0.0:*  users:(("mysqld",pid=1234,fd=25))
-
-# 5. 登录 MySQL
-mysql -u root
-
-# 6. 创建远程访问用户
-mysql> CREATE USER 'testuser'@'%' IDENTIFIED BY 'testpass';
-mysql> GRANT ALL PRIVILEGES ON *.* TO 'testuser'@'%';
-mysql> FLUSH PRIVILEGES;
-mysql> EXIT;
-
-# 7. 测试本地连接
+# 方式1: 从容器内部连接
+sudo docker compose exec -it mysql-server bash
 mysql -u testuser -ptestpass -e "SELECT VERSION();"
+
 # 预期输出:
-# +-----------+
-# | VERSION() |
-# +-----------+
-# | 8.0.39    |
-# +-----------+
++-----------+
+| VERSION() |
++-----------+
+| 8.0.40    |
++-----------+
+
+# 方式2: 从宿主机连接（需要安装 mysql-client）
+mysql -h 127.0.0.1 -P 3307 -u testuser -ptestpass -e "SELECT VERSION();"
+
+# 预期输出:
++-----------+
+| VERSION() |
++-----------+
+| 8.0.40    |
++-----------+
+
+# 查看容器内 MySQL 监听端口
+sudo docker compose exec -it mysql-server bash
+ss -tnlp | grep 3306
+
+# 预期输出:
+# LISTEN  0  151  0.0.0.0:3306  0.0.0.0:*  users:(("mysqld",pid=1,fd=23))
 ```
 
-### 15.5 准备 Redis 模拟服务器
-
-**⚠️ 说明**: 本示例提供两种方式:
-1. **简单模拟方式**（使用 Nginx stream 模拟,便于快速测试）
-2. **真实安装方式**（安装真实 Redis 服务器）
-
-#### 15.5.1 方式一: 使用 Nginx 模拟 Redis（快速测试）
+#### 15.4.3 测试 MySQL 数据操作
 
 ```bash
-# 进入 redis-mock 容器
-docker compose exec -it redis-mock bash
-
-# 配置 Nginx 监听 6379 端口（模拟 Redis）
-cat > /data/server/nginx/conf/nginx.conf <<'EOF'
-load_module /usr/lib/nginx/modules/ngx_stream_module.so;
-
-worker_processes auto;
-events {
-    worker_connections 1024;
-}
-
-stream {
-    server {
-        listen 6379;
-        return "Redis Mock Server on 10.0.7.77:6379\n";
-    }
-}
+# 连接并执行 SQL 语句
+mysql -h 127.0.0.1 -P 3307 -u testuser -ptestpass testdb <<EOF
+CREATE TABLE IF NOT EXISTS users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50)
+);
+INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');
+SELECT * FROM users;
 EOF
 
-# 启动 Nginx
-/data/server/nginx/sbin/nginx
+# 预期输出:
++----+---------+
+| id | name    |
++----+---------+
+|  1 | Alice   |
+|  2 | Bob     |
+|  3 | Charlie |
++----+---------+
 ```
 
-#### 15.5.2 方式二: 安装真实 Redis 服务器（生产环境）
+### 15.5 准备 Redis 服务器
+
+本示例使用官方 Redis 7.0 镜像,已通过 docker-compose.yaml 自动配置。
+
+#### 15.5.1 查看 Redis 服务状态
 
 ```bash
-# 进入 redis-mock 容器（Rocky 系统）
-docker compose exec -it redis-mock bash
+# 查看 Redis 容器状态
+docker ps | grep redis-server
 
-# 1. 安装 Redis 服务器
-yum install -y redis
-
-# 2. 修改 Redis 配置,允许远程访问
-sed -i 's/^bind 127.0.0.1/bind 0.0.0.0/' /etc/redis/redis.conf
-
-# 或手动编辑
-# vim /etc/redis/redis.conf
-# 找到: bind 127.0.0.1
-# 改为: bind 0.0.0.0
-
-# 3. 启动 Redis 服务
-redis-server /etc/redis/redis.conf --daemonize yes
-
-# 4. 查看 Redis 监听端口
-ss -tnlp | grep 6379
 # 预期输出:
-# LISTEN  0  128  0.0.0.0:6379  0.0.0.0:*  users:(("redis-server",pid=1234,fd=6))
+# CONTAINER ID   IMAGE        COMMAND                  STATUS         PORTS
+# def456abc789   redis:7.0    "docker-entrypoint.s…"   Up 2 minutes   0.0.0.0:6380->6379/tcp
+```
 
-# 5. 测试本地连接
+#### 15.5.2 测试 Redis 连接
+
+**Redis 配置说明**（已在 compose.yaml 中配置）:
+- 监听地址: `0.0.0.0` （允许远程连接）
+- 保护模式: `no` （允许无密码连接）
+- 默认端口: `6379`
+
+```bash
+# 方式1: 从容器内部连接
+sudo docker compose exec -it redis-server bash
 redis-cli ping
-# 预期输出:
-# PONG
 
-# 6. 测试 SET/GET 命令
-redis-cli SET testkey "Hello Redis"
-redis-cli GET testkey
 # 预期输出:
-# "Hello Redis"
+PONG
 
-# 7. 查看 Redis 服务器信息
-redis-cli INFO SERVER | head -20
+# 方式2: 从宿主机连接（需要安装 redis-tools）
+redis-cli -h 127.0.0.1 -p 6380 ping
+
 # 预期输出:
-# # Server
-# redis_version:7.0.15
-# redis_git_sha1:00000000
-# redis_git_dirty:0
-# redis_build_id:1234567890abcdef
-# redis_mode:standalone
-# os:Linux 6.11.0-29-generic x86_64
-# arch_bits:64
-# multiplexing_api:epoll
-# ...
+PONG
+
+# 查看容器内 Redis 监听端口
+sudo docker compose exec -it redis-server bash
+ss -tnlp | grep 6379
+
+# 预期输出:
+# LISTEN  0  511  0.0.0.0:6379  0.0.0.0:*  users:(("redis-server",pid=1,fd=6))
+```
+
+#### 15.5.3 测试 Redis 基本操作
+
+```bash
+# 测试 SET/GET 命令（从宿主机）
+redis-cli -h 127.0.0.1 -p 6380 SET mykey "Hello Nginx Load Balancer"
+redis-cli -h 127.0.0.1 -p 6380 GET mykey
+
+# 预期输出:
+OK
+"Hello Nginx Load Balancer"
+
+# 测试更多命令
+redis-cli -h 127.0.0.1 -p 6380 <<EOF
+SET counter 100
+INCR counter
+INCR counter
+GET counter
+MSET key1 "value1" key2 "value2" key3 "value3"
+MGET key1 key2 key3
+EOF
+
+# 预期输出:
+OK
+(integer) 101
+(integer) 102
+"102"
+OK
+1) "value1"
+2) "value2"
+3) "value3"
+
+# 查看 Redis 服务器信息
+redis-cli -h 127.0.0.1 -p 6380 INFO SERVER
+
+# 预期输出:
+# Server
+redis_version:7.0.15
+redis_git_sha1:00000000
+redis_git_dirty:0
+redis_build_id:1234567890abcdef
+redis_mode:standalone
+os:Linux 6.14.0-33-generic x86_64
+arch_bits:64
+monotonic_clock:POSIX clock_gettime
+multiplexing_api:epoll
+atomicvar_api:c11-builtin
+gcc_version:12.2.0
+process_id:1
+process_supervised:no
+run_id:1234567890abcdef1234567890abcdef12345678
+tcp_port:6379
+server_time_usec:1728740123456789
+uptime_in_seconds:120
+uptime_in_days:0
+hz:10
+configured_hz:10
+lru_clock:1234567
+executable:/usr/local/bin/redis-server
+config_file:
+io_threads_active:0
 ```
 
 ### 15.6 配置四层代理
@@ -1518,7 +1539,7 @@ redis-cli INFO SERVER | head -20
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 创建 stream 配置文件
 cat > /data/server/nginx/conf/stream_configs/tcp.conf <<'EOF'
@@ -1577,77 +1598,113 @@ yum install -y redis
 
 ### 15.8 测试四层代理效果
 
-#### 15.8.1 测试 MySQL 代理（模拟方式）
+#### 15.8.1 测试 MySQL 四层代理
+
+**测试连接**:
 
 ```bash
-# 在宿主机测试（使用 telnet 或 nc）
-telnet localhost 3306
-# 预期输出:MySQL Mock Server on 10.0.7.76:3306
-
-# 或使用 nc
-nc localhost 3306
-# 预期输出:MySQL Mock Server on 10.0.7.76:3306
-```
-
-#### 15.8.2 测试 MySQL 代理（真实安装）
-
-```bash
-# 在宿主机使用 mysql 客户端连接
+# 在宿主机使用 mysql 客户端通过负载均衡器连接
+# 注意：这里连接的是负载均衡器的 3306 端口，会被代理到 10.0.7.76:3306
 mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass -e "SELECT VERSION();"
 
-# 预期输出（完整版本信息表格）:
+# 预期输出:
 +-----------+
 | VERSION() |
 +-----------+
-| 8.0.39    |
+| 8.0.40    |
 +-----------+
+```
 
-# 测试数据库操作
+**测试数据库操作**:
+
+```bash
+# 通过负载均衡器创建数据库和表
 mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass <<EOF
-CREATE DATABASE IF NOT EXISTS testdb;
-USE testdb;
-CREATE TABLE IF NOT EXISTS users (id INT PRIMARY KEY, name VARCHAR(50));
-INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');
+CREATE DATABASE IF NOT EXISTS proxytest;
+USE proxytest;
+CREATE TABLE IF NOT EXISTS users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO users (name) VALUES ('Alice'), ('Bob'), ('Charlie');
 SELECT * FROM users;
 EOF
 
 # 预期输出:
-+----+-------+
-| id | name  |
-+----+-------+
-|  1 | Alice |
-|  2 | Bob   |
-+----+-------+
++----+---------+---------------------+
+| id | name    | created_at          |
++----+---------+---------------------+
+|  1 | Alice   | 2025-10-16 10:00:00 |
+|  2 | Bob     | 2025-10-16 10:00:00 |
+|  3 | Charlie | 2025-10-16 10:00:00 |
++----+---------+---------------------+
 ```
 
-#### 15.8.3 测试 Redis 代理（模拟方式）
+**验证代理路径**:
 
 ```bash
-# 在宿主机测试（使用 telnet 或 nc）
-telnet localhost 6379
-# 预期输出:Redis Mock Server on 10.0.7.77:6379
+# 1. 在负载均衡器容器中查看连接
+sudo docker compose exec -it nginx-lb bash
+ss -tnep | grep 3306
 
-# 或使用 nc
-nc localhost 6379
-# 预期输出:Redis Mock Server on 10.0.7.77:6379
+# 预期输出（显示到后端 MySQL 的连接）:
+# ESTAB  0  0  10.0.7.70:45678  10.0.7.76:3306  users:(("nginx",pid=123,fd=10))
+
+# 2. 在 MySQL 容器中查看连接
+sudo docker compose exec -it mysql-server bash
+ss -tnep | grep 3306
+
+# 预期输出（显示来自负载均衡器的连接）:
+# ESTAB  0  0  10.0.7.76:3306  10.0.7.70:45678  users:(("mysqld",pid=1,fd=25))
 ```
 
-#### 15.8.4 测试 Redis 代理（真实安装）
+#### 15.8.2 测试 Redis 四层代理
+
+**测试连接**:
 
 ```bash
-# 在宿主机使用 redis-cli 连接
+# 在宿主机使用 redis-cli 通过负载均衡器连接
+# 注意：这里连接的是负载均衡器的 6379 端口，会被代理到 10.0.7.77:6379
 redis-cli -h 127.0.0.1 -p 6379 ping
+
 # 预期输出:
 PONG
+```
 
-# 测试 Redis 基本操作
-redis-cli -h 127.0.0.1 -p 6379 SET mykey "Hello Nginx Proxy"
-redis-cli -h 127.0.0.1 -p 6379 GET mykey
+**测试 Redis 基本操作**:
+
+```bash
+# 测试 SET/GET 命令
+redis-cli -h 127.0.0.1 -p 6379 SET proxykey "Hello Nginx Proxy"
+redis-cli -h 127.0.0.1 -p 6379 GET proxykey
+
 # 预期输出:
+OK
 "Hello Nginx Proxy"
 
-# 查看 Redis 服务器信息（完整输出）
-redis-cli -h 127.0.0.1 -p 6379 INFO SERVER
+# 测试更多复杂命令
+redis-cli -h 127.0.0.1 -p 6379 <<EOF
+LPUSH mylist "item1" "item2" "item3"
+LRANGE mylist 0 -1
+HSET myhash field1 "value1" field2 "value2"
+HGETALL myhash
+EOF
+
+# 预期输出:
+(integer) 3
+1) "item3"
+2) "item2"
+3) "item1"
+(integer) 2
+1) "field1"
+2) "value1"
+3) "field2"
+4) "value2"
+
+# 查看 Redis 服务器信息
+redis-cli -h 127.0.0.1 -p 6379 INFO SERVER | head -15
+
 # 预期输出:
 # Server
 redis_version:7.0.15
@@ -1655,31 +1712,39 @@ redis_git_sha1:00000000
 redis_git_dirty:0
 redis_build_id:1234567890abcdef
 redis_mode:standalone
-os:Linux 6.11.0-29-generic x86_64
+os:Linux 6.14.0-33-generic x86_64
 arch_bits:64
-monotonic_clock:POSIX clock_gettime
 multiplexing_api:epoll
-atomicvar_api:c11-builtin
-gcc_version:11.4.0
-process_id:1234
-process_supervised:no
-run_id:1234567890abcdef1234567890abcdef12345678
+process_id:1
 tcp_port:6379
-server_time_usec:1728740123456789
-uptime_in_seconds:3600
-uptime_in_days:0
-hz:10
-configured_hz:10
-lru_clock:1234567
-executable:/usr/bin/redis-server
-config_file:/etc/redis/redis.conf
-io_threads_active:0
+uptime_in_seconds:600
+...
+```
+
+**验证代理路径**:
+
+```bash
+# 1. 在负载均衡器容器中查看连接
+sudo docker compose exec -it nginx-lb bash
+ss -tnep | grep 6379
+
+# 预期输出（显示到后端 Redis 的连接）:
+# ESTAB  0  0  10.0.7.70:56789  10.0.7.77:6379  users:(("nginx",pid=124,fd=11))
+
+# 2. 在 Redis 容器中查看连接
+sudo docker compose exec -it redis-server bash
+ss -tnep | grep 6379
+
+# 预期输出（显示来自负载均衡器的连接）:
+# ESTAB  0  0  10.0.7.77:6379  10.0.7.70:56789  users:(("redis-server",pid=1,fd=8))
 ```
 
 **测试结果说明**:
-- MySQL 代理成功将 3306 端口的请求转发到后端 MySQL 服务器
-- Redis 代理成功将 6379 端口的请求转发到后端 Redis 服务器
-- 四层代理完全透明,客户端无需知道后端服务器的真实 IP
+- ✅ MySQL 四层代理成功将 3306 端口的请求转发到后端 MySQL 服务器（10.0.7.76:3306）
+- ✅ Redis 四层代理成功将 6379 端口的请求转发到后端 Redis 服务器（10.0.7.77:6379）
+- ✅ 四层代理完全透明,客户端无需知道后端服务器的真实 IP
+- ✅ Nginx stream 模块支持 TCP 协议的完整双向通信
+- ✅ 数据库和缓存操作完全正常,无任何功能限制
 
 ---
 
@@ -1869,7 +1934,7 @@ location ~ \.php$ {
 
 ```bash
 # 在容器中查看区别
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 查看文件是否存在
 ls /data/server/nginx/conf/fastcgi*
@@ -2072,7 +2137,7 @@ location ~ \.php$ {
 
 ```bash
 # 进入负载均衡器容器
-docker compose exec -it nginx-lb bash
+sudo docker compose exec -it nginx-lb bash
 
 # 配置 FastCGI 代理
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -2313,8 +2378,8 @@ upstream backend {
 **测试方法**:
 ```bash
 # 停止所有主服务器
-docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx -s stop
-docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx -s stop
+sudo docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx -s stop
+sudo docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx -s stop
 
 # 此时请求会被转发到 backup 服务器
 curl http://localhost:8070
@@ -2449,13 +2514,13 @@ ss -tnep | grep 80 | wc -l
 
 ```bash
 # 1. 停止所有容器
-docker compose down
+sudo docker compose down
 
 # 2. 删除网络（可选）
 docker network rm 07manual-balance_nginx-net
 
 # 3. 完全清理（包括镜像）
-docker compose down --rmi all
+sudo docker compose down --rmi all
 ```
 
 ---

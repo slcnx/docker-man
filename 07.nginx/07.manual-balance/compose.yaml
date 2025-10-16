@@ -68,37 +68,34 @@ services:
     tty: true
     stdin_open: true
 
-  # MySQL 模拟服务器（使用 Nginx 模拟 MySQL 端口）
-  mysql-mock:
-    container_name: mysql-mock
-    hostname: mysql-mock
-    build:
-      context: ..
-      dockerfile: Dockerfile.ubuntu-compile
+  # MySQL 服务器（使用官方 MySQL 镜像）
+  mysql-server:
+    container_name: mysql-server
+    hostname: mysql-server
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass123
+      MYSQL_DATABASE: testdb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
     networks:
       nginx-net:
         ipv4_address: 10.0.7.76
     ports:
       - "3307:3306"
-    command: tail -f /dev/null
-    tty: true
-    stdin_open: true
+    command: --bind-address=0.0.0.0
 
-  # Redis 模拟服务器（使用 Nginx 模拟 Redis 端口）
-  redis-mock:
-    container_name: redis-mock
-    hostname: redis-mock
-    build:
-      context: ..
-      dockerfile: Dockerfile.rocky-compile
+  # Redis 服务器（使用官方 Redis 镜像）
+  redis-server:
+    container_name: redis-server
+    hostname: redis-server
+    image: redis:7.0
     networks:
       nginx-net:
         ipv4_address: 10.0.7.77
     ports:
       - "6380:6379"
-    command: tail -f /dev/null
-    tty: true
-    stdin_open: true
+    command: redis-server --bind 0.0.0.0 --protected-mode no
 
 networks:
   nginx-net:
